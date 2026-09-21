@@ -75,15 +75,16 @@ class PgVectorStore:
                 f"embedding vector({dimension})"
                 ")"
             )
-            await conn.execute("DELETE FROM chunks")
-            await conn.executemany(
-                "INSERT INTO chunks (source, body, embedding)"
-                " VALUES ($1, $2, $3::vector)",
-                [
-                    (chunk.source, chunk.text, _vector_literal(vector))
-                    for chunk, vector in zip(chunks, vectors, strict=True)
-                ],
-            )
+            async with conn.transaction():
+                await conn.execute("DELETE FROM chunks")
+                await conn.executemany(
+                    "INSERT INTO chunks (source, body, embedding)"
+                    " VALUES ($1, $2, $3::vector)",
+                    [
+                        (chunk.source, chunk.text, _vector_literal(vector))
+                        for chunk, vector in zip(chunks, vectors, strict=True)
+                    ],
+                )
         finally:
             await conn.close()
 

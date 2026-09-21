@@ -18,12 +18,21 @@ class _UnavailableEmbedder:
         raise EmbeddingsUnavailable("embeddings down")
 
 
+class _NoopTransaction:
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
 def _pg_connection() -> AsyncMock:
     conn = AsyncMock()
     conn.execute = AsyncMock()
     conn.executemany = AsyncMock()
     conn.fetch = AsyncMock(return_value=[])
     conn.close = AsyncMock()
+    conn.transaction = MagicMock(return_value=_NoopTransaction())
     return conn
 
 
@@ -81,6 +90,46 @@ async def test_pgvector_upsert_replaces_all_and_sizes_vector(
     assert rows[0][0] == "runbooks/tunnel.md"
     assert rows[0][1] == "tunnel body"
     assert delete_index < len(sqls)
+
+
+@pytest.mark.asyncio
+async def test_pgvector_upsert_delete_and_insert_run_in_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _pg_connection()
+    in_transaction = False
+    ops_in_transaction: list[str] = []
+
+    class _Transaction:
+        async def __aenter__(self) -> None:
+            nonlocal in_transaction
+            in_transaction = True
+
+        async def __aexit__(self, *args: object) -> None:
+            nonlocal in_transaction
+            in_transaction = False
+
+    async def execute(sql: str, *args: object) -> None:
+        if in_transaction:
+            ops_in_transaction.append(sql)
+
+    async def executemany(sql: str, *args: object) -> None:
+        if in_transaction:
+            ops_in_transaction.append(sql)
+
+    conn.transaction = MagicMock(return_value=_Transaction())
+    conn.execute = AsyncMock(side_effect=execute)
+    conn.executemany = AsyncMock(side_effect=executemany)
+    connect = AsyncMock(return_value=conn)
+    monkeypatch.setattr("heimdall.rag.store.asyncpg.connect", connect)
+    store = PgVectorStore(DSN)
+    await store.upsert(
+        [Chunk(text="tunnel body", source="runbooks/tunnel.md")],
+        FakeEmbedder(),
+    )
+    conn.transaction.assert_called_once_with()
+    assert any("DELETE FROM chunks" in sql for sql in ops_in_transaction)
+    assert any("INSERT INTO chunks" in sql for sql in ops_in_transaction)
 
 
 @pytest.mark.asyncio
