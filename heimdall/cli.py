@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import AsyncIterator
+import sys
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +42,7 @@ STORE_UNAVAILABLE = (
     "база знаний недоступна, проверьте postgres и выполните heimdall ingest"
 )
 RUN_FAILED = "не удалось выполнить проверку"
+STARTUP_FAILED = "не удалось запустить агента, проверьте .env и доступность сервисов"
 INGEST_FAILED = "не удалось проиндексировать базу знаний"
 BROKEN_PROPOSAL = "агент предложил действие, которое не удалось разобрать"
 STILL_INTERRUPTED = "агент снова ждёт подтверждения, отчёт не готов"
@@ -89,15 +91,22 @@ def _parser() -> argparse.ArgumentParser:
 async def _ask(question: str, deps: AppDeps | None) -> int:
     if deps is not None:
         return await _run_ask(question, deps)
-    async with _production_deps() as production:
-        return await _run_ask(question, production)
+    return await _in_production(lambda production: _run_ask(question, production))
 
 
 async def _ingest(deps: AppDeps | None) -> int:
     if deps is not None:
         return await _run_ingest(deps)
-    async with _production_deps() as production:
-        return await _run_ingest(production)
+    return await _in_production(_run_ingest)
+
+
+async def _in_production(run: Callable[[AppDeps], Awaitable[int]]) -> int:
+    try:
+        async with _production_deps() as production:
+            return await run(production)
+    except Exception as exc:
+        print(f"{STARTUP_FAILED}: {exc}", file=sys.stderr)
+        return 1
 
 
 async def _run_ask(question: str, deps: AppDeps) -> int:

@@ -139,6 +139,21 @@ def patch_graph(monkeypatch: pytest.MonkeyPatch, graph: StubGraph) -> None:
     monkeypatch.setattr("heimdall.cli.build_graph", lambda **kwargs: graph)
 
 
+class ExplodingDeps:
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    async def __aenter__(self) -> AppDeps:
+        raise self._error
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        return None
+
+
+def patch_production_deps(monkeypatch: pytest.MonkeyPatch, error: Exception) -> None:
+    monkeypatch.setattr("heimdall.cli._production_deps", lambda: ExplodingDeps(error))
+
+
 def tool_call(tool: str, **arguments: object) -> ToolCall:
     return ToolCall(id=f"call-{next(_ids)}", name=tool, arguments=dict(arguments))
 
@@ -444,6 +459,32 @@ def test_ingest_reports_an_unreachable_store(tmp_path: Path) -> None:
 
     assert code != 0
     assert "postgres refused the connection" in channel.output
+
+
+def test_ask_reports_a_broken_production_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    patch_production_deps(
+        monkeypatch, ValueError("gigachat_credentials field required")
+    )
+
+    code = main(["ask", POSTGRES_QUESTION])
+
+    assert code == 1
+    assert "gigachat_credentials field required" in capsys.readouterr().err
+
+
+def test_ingest_reports_a_broken_production_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    patch_production_deps(monkeypatch, OSError("unable to open database file"))
+
+    code = main(["ingest"])
+
+    assert code == 1
+    assert "unable to open database file" in capsys.readouterr().err
 
 
 def test_main_without_a_command_fails() -> None:
