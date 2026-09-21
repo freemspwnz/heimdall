@@ -2,6 +2,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from heimdall.constants import MAX_OBSERVATION_LINES
 from heimdall.tools.loki import LokiClient
 
 
@@ -37,11 +38,13 @@ async def test_loki_query_ok_truncates_and_flattens() -> None:
     assert len(payload_lines) <= 100
     assert payload_lines == [f"log-{i}" for i in range(20, 120)]
     assert "log-0" not in obs.payload
-    session.get.assert_called()
+    session.get.assert_called_once()
     url = session.get.call_args.args[0]
     params = session.get.call_args.kwargs["params"]
-    assert "/loki/api/v1/query_range" in url
+    assert url.endswith("/loki/api/v1/query_range")
     assert params["query"] == '{container="postgres"}'
+    assert params["direction"] == "backward"
+    assert params["limit"] == str(MAX_OBSERVATION_LINES)
 
 
 @pytest.mark.asyncio
