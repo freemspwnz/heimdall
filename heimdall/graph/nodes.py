@@ -133,18 +133,21 @@ async def investigate(state: GraphState, deps: Deps) -> StateUpdate:
         ChatMessage(role="system", content=_system_prompt(INVESTIGATE_SYSTEM, state)),
         ChatMessage(role="user", content=_context(state)),
     ]
-    for _ in range(MAX_TOOL_CALLS_PER_ROUND):
+    budget = MAX_TOOL_CALLS_PER_ROUND
+    while budget > 0:
         result = await deps.chat.complete(messages, tools=READ_TOOLS)
         if not result.tool_calls:
             break
+        calls = result.tool_calls[:budget]
+        budget -= len(calls)
         messages.append(
             ChatMessage(
                 role="assistant",
                 content=result.content or "",
-                tool_calls=list(result.tool_calls),
+                tool_calls=calls,
             )
         )
-        for call in result.tool_calls:
+        for call in calls:
             observation = await _run_tool(deps, call)
             observations.append(_observation_dict(observation))
             messages.append(

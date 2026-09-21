@@ -399,6 +399,77 @@ async def test_investigate_history_keeps_assistant_tool_calls_before_results() -
 
 
 @pytest.mark.asyncio
+async def test_investigate_executes_at_most_four_tools_in_one_turn() -> None:
+    docker = FakeDocker()
+    loki = FakeLoki()
+    vm = FakeVictoriaMetrics()
+    chat = FakeChatModel(
+        [
+            ScriptedTurn(
+                tool_calls=[
+                    tool_call("docker_ps"),
+                    tool_call("docker_ps"),
+                    tool_call("docker_ps"),
+                    tool_call("docker_logs", name="postgres"),
+                    tool_call("loki_query", query='{container="postgres"}'),
+                    tool_call("vm_query", query="pg_up"),
+                ]
+            ),
+            diagnose_turn(0.8),
+            propose_turn(None, report="Нужна ручная проверка."),
+        ]
+    )
+    graph = await make_graph(chat, docker=docker, loki=loki, vm=vm)
+
+    final = await graph.ainvoke({"question": POSTGRES_QUESTION}, config("tool-budget"))
+
+    assert len(final["observations"]) == 4
+    assert docker.ps_calls == 3
+    assert docker.logs_calls == ["postgres"]
+    assert loki.queries == []
+    assert vm.queries == []
+
+
+@pytest.mark.asyncio
+async def test_investigate_spends_its_tool_budget_across_rounds() -> None:
+    docker = FakeDocker()
+    loki = FakeLoki()
+    chat = FakeChatModel(
+        [
+            ScriptedTurn(
+                tool_calls=[
+                    tool_call("docker_ps"),
+                    tool_call("docker_ps"),
+                    tool_call("docker_ps"),
+                ]
+            ),
+            ScriptedTurn(
+                tool_calls=[
+                    tool_call("loki_query", query='{container="postgres"}'),
+                    tool_call("loki_query", query='{container="traefik"}'),
+                    tool_call("loki_query", query='{container="whoami"}'),
+                ]
+            ),
+            diagnose_turn(0.8),
+            propose_turn(None, report="Нужна ручная проверка."),
+        ]
+    )
+    graph = await make_graph(
+        chat,
+        docker=docker,
+        loki=loki,
+        vm=FakeVictoriaMetrics(),
+    )
+
+    final = await graph.ainvoke({"question": POSTGRES_QUESTION}, config("budget-split"))
+
+    assert len(final["observations"]) == 4
+    assert docker.ps_calls == 3
+    assert loki.queries == ['{container="postgres"}']
+    assert final["confidence"] == 0.8
+
+
+@pytest.mark.asyncio
 async def test_tunnel_report_states_remote_vpn_was_not_inspected() -> None:
     docker = FakeDocker()
     chat = FakeChatModel(
