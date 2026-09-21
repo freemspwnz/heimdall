@@ -137,7 +137,13 @@ async def investigate(state: GraphState, deps: Deps) -> StateUpdate:
         result = await deps.chat.complete(messages, tools=READ_TOOLS)
         if not result.tool_calls:
             break
-        messages.append(ChatMessage(role="assistant", content=result.content or ""))
+        messages.append(
+            ChatMessage(
+                role="assistant",
+                content=result.content or "",
+                tool_calls=list(result.tool_calls),
+            )
+        )
         for call in result.tool_calls:
             observation = await _run_tool(deps, call)
             observations.append(_observation_dict(observation))

@@ -368,6 +368,37 @@ async def test_investigate_never_offers_the_restart_tool() -> None:
 
 
 @pytest.mark.asyncio
+async def test_investigate_history_keeps_assistant_tool_calls_before_results() -> None:
+    inspect = tool_call("docker_inspect", name="postgres")
+    chat = FakeChatModel(
+        [
+            ScriptedTurn(tool_calls=[inspect]),
+            text_turn("Факты собраны."),
+            diagnose_turn(0.8),
+            propose_turn(None, report="Нужна ручная проверка."),
+        ]
+    )
+    graph = await make_graph(
+        chat,
+        docker=FakeDocker(),
+        loki=FakeLoki(),
+        vm=FakeVictoriaMetrics(),
+    )
+
+    await graph.ainvoke({"question": POSTGRES_QUESTION}, config("tool-call-history"))
+
+    second_round = chat.calls[1]["messages"]
+    assert isinstance(second_round, list)
+    roles = [message.role for message in second_round]
+    assistant_index = roles.index("assistant")
+    tool_index = roles.index("tool")
+    assert assistant_index < tool_index
+    assert second_round[assistant_index].tool_calls == [inspect]
+    assert second_round[tool_index].tool_call_id == inspect.id
+    assert second_round[tool_index].name == "docker_inspect"
+
+
+@pytest.mark.asyncio
 async def test_tunnel_report_states_remote_vpn_was_not_inspected() -> None:
     docker = FakeDocker()
     chat = FakeChatModel(
