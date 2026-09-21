@@ -33,8 +33,15 @@ async def test_loki_query_ok_truncates_and_flattens() -> None:
     obs = await client.query('{container="postgres"}', since="15m")
     assert obs.ok is True
     assert obs.source == "loki"
-    assert obs.payload.count("\n") + 1 <= 100
+    payload_lines = obs.payload.splitlines()
+    assert len(payload_lines) <= 100
+    assert payload_lines == [f"log-{i}" for i in range(20, 120)]
+    assert "log-0" not in obs.payload
     session.get.assert_called()
+    url = session.get.call_args.args[0]
+    params = session.get.call_args.kwargs["params"]
+    assert "/loki/api/v1/query_range" in url
+    assert params["query"] == '{container="postgres"}'
 
 
 @pytest.mark.asyncio

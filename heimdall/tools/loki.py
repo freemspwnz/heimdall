@@ -5,13 +5,17 @@ import time
 
 import aiohttp
 
-from heimdall.constants import HTTP_TIMEOUT_SECONDS
+from heimdall.constants import (
+    HTTP_TIMEOUT_SECONDS,
+    MAX_OBSERVATION_CHARS,
+    MAX_OBSERVATION_LINES,
+)
 from heimdall.models import Observation
 from heimdall.truncate import truncate_payload
 
 _SOURCE = "loki"
 _QUERY_PATH = "/loki/api/v1/query_range"
-_QUERY_LIMIT = 5000
+_QUERY_LIMIT = MAX_OBSERVATION_LINES
 _EMPTY_PAYLOAD = "no streams"
 
 
@@ -27,6 +31,16 @@ def _since_seconds(since: str) -> float:
     return amount * multipliers.get(unit, 60.0)
 
 
+def _entry_ts(raw: object) -> int:
+    if isinstance(raw, bool):
+        return 0
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str) and raw.isdigit():
+        return int(raw)
+    return 0
+
+
 def _flatten_log_lines(payload: object) -> list[str]:
     if not isinstance(payload, dict):
         return []
@@ -36,7 +50,7 @@ def _flatten_log_lines(payload: object) -> list[str]:
     result = data.get("result")
     if not isinstance(result, list):
         return []
-    lines: list[str] = []
+    entries: list[tuple[int, str]] = []
     for stream in result:
         if not isinstance(stream, dict):
             continue
@@ -45,8 +59,17 @@ def _flatten_log_lines(payload: object) -> list[str]:
             continue
         for pair in values:
             if isinstance(pair, list) and len(pair) >= 2 and isinstance(pair[1], str):
-                lines.append(pair[1])
-    return lines
+                entries.append((_entry_ts(pair[0]), pair[1]))
+    entries.sort(key=lambda item: item[0])
+    return [line for _, line in entries]
+
+
+def _tail_window(lines: list[str]) -> str:
+    window = lines[-MAX_OBSERVATION_LINES:]
+    text = "\n".join(window)
+    if len(text) > MAX_OBSERVATION_CHARS:
+        text = text[-MAX_OBSERVATION_CHARS:]
+    return text
 
 
 class LokiClient:
@@ -63,7 +86,7 @@ class LokiClient:
             "start": str(int(start * 1_000_000_000)),
             "end": str(int(end * 1_000_000_000)),
             "limit": str(_QUERY_LIMIT),
-            "direction": "forward",
+            "direction": "backward",
         }
         timeout = aiohttp.ClientTimeout(total=HTTP_TIMEOUT_SECONDS)
         try:
@@ -91,7 +114,7 @@ class LokiClient:
                 return Observation(
                     source=_SOURCE,
                     ok=True,
-                    payload=truncate_payload("\n".join(lines)),
+                    payload=truncate_payload(_tail_window(lines)),
                 )
         except TimeoutError as exc:
             return Observation(
