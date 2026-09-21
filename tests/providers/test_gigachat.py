@@ -127,6 +127,7 @@ async def test_gigachat_chat_parses_tool_calls_after_oauth() -> None:
     chat_kwargs = session.post.call_args_list[1].kwargs
     assert chat_kwargs["headers"]["Authorization"] == "Bearer tok-1"
     payload = chat_kwargs["json"]
+    assert payload["model"] == "GigaChat"
     assert payload["tools"] == [
         {
             "type": "function",
@@ -141,6 +142,7 @@ async def test_gigachat_chat_parses_tool_calls_after_oauth() -> None:
     assert session.post.call_count == 3
     third_url = session.post.call_args_list[2].args[0]
     assert third_url.endswith("/chat/completions")
+    assert session.post.call_args_list[2].kwargs["json"]["model"] == "GigaChat"
 
 
 @pytest.mark.asyncio
@@ -192,12 +194,16 @@ async def test_gigachat_embeddings_200_returns_vectors() -> None:
     embed_url = session.post.call_args_list[1].args[0]
     assert embed_url == f"{settings.gigachat_base_url}/embeddings"
     assert "/embeddings" in embed_url
-    assert session.post.call_args_list[1].kwargs["json"] == {"input": ["a", "b"]}
+    assert session.post.call_args_list[1].kwargs["json"] == {
+        "model": "GigaChat",
+        "input": ["a", "b"],
+    }
     assert session.post.call_args_list[1].kwargs["headers"]["Authorization"] == (
         "Bearer tok-emb"
     )
     await embedder.embed(["c"])
     assert session.post.call_count == 3
+    assert session.post.call_args_list[2].kwargs["json"]["model"] == "GigaChat"
 
 
 @pytest.mark.asyncio
@@ -212,6 +218,26 @@ async def test_gigachat_embeddings_500_raises_unavailable() -> None:
     embedder = GigaChatEmbedder(settings, session)
     with pytest.raises(EmbeddingsUnavailable):
         await embedder.embed(["x"])
+
+
+@pytest.mark.asyncio
+async def test_gigachat_verify_ssl_false_passes_ssl_false() -> None:
+    settings = Settings(
+        gigachat_credentials="dGVzdA==",
+        postgres_dsn="postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall",
+        gigachat_verify_ssl=False,
+        _env_file=None,
+    )
+    session = _session(
+        [
+            _response(200, {"access_token": "tok-1"}),
+            _response(200, {"choices": [{"message": {"content": "ok"}}]}),
+        ]
+    )
+    model = GigaChatChatModel(settings, session)
+    await model.complete([ChatMessage(role="user", content="q")])
+    for call in session.post.call_args_list:
+        assert call.kwargs["ssl"] is False
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,8 @@ from heimdall.models import ChatMessage, ChatResult, ToolCall, ToolSpec
 from heimdall.providers.protocols import ChatUnavailable, EmbeddingsUnavailable
 from heimdall.settings import Settings
 
+GIGACHAT_MODEL = "GigaChat"
+
 
 def _timeout() -> aiohttp.ClientTimeout:
     return aiohttp.ClientTimeout(total=HTTP_TIMEOUT_SECONDS)
@@ -139,10 +141,20 @@ class _GigaChatHttp:
         timeout = _timeout()
         if json_body is not None:
             cm = self._session.post(
-                url, headers=headers, json=json_body, timeout=timeout
+                url,
+                headers=headers,
+                json=json_body,
+                timeout=timeout,
+                ssl=self._verify_ssl,
             )
         else:
-            cm = self._session.post(url, headers=headers, data=data, timeout=timeout)
+            cm = self._session.post(
+                url,
+                headers=headers,
+                data=data,
+                timeout=timeout,
+                ssl=self._verify_ssl,
+            )
         async with cm as resp:
             text = await resp.text()
             return resp.status, text
@@ -206,6 +218,7 @@ class GigaChatChatModel:
         tools: list[ToolSpec] | None = None,
     ) -> ChatResult:
         body: dict[str, object] = {
+            "model": GIGACHAT_MODEL,
             "messages": [_message_payload(message) for message in messages],
         }
         if tools is not None:
@@ -223,6 +236,6 @@ class GigaChatEmbedder:
     async def embed(self, texts: list[str]) -> list[list[float]]:
         url = f"{self._base_url}/embeddings"
         parsed = await self._http.post_json(
-            url, {"input": texts}, EmbeddingsUnavailable
+            url, {"model": GIGACHAT_MODEL, "input": texts}, EmbeddingsUnavailable
         )
         return _parse_embeddings(parsed)
