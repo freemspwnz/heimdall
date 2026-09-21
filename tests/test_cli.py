@@ -4,17 +4,24 @@ import json
 from pathlib import Path
 from typing import Any
 
+import asyncpg
+import pytest
 from heimdall.cli import AppDeps, main
 from heimdall.models import (
     Action,
     ChatMessage,
     ChatResult,
+    Chunk,
     Observation,
     ToolCall,
     ToolSpec,
 )
 from heimdall.providers.fake import FakeChatModel, FakeEmbedder, ScriptedTurn
-from heimdall.providers.protocols import ChatUnavailable, EmbeddingsUnavailable
+from heimdall.providers.protocols import (
+    ChatUnavailable,
+    Embedder,
+    EmbeddingsUnavailable,
+)
 from heimdall.rag.store import InMemoryVectorStore
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -89,6 +96,47 @@ class FlakyChatModel:
 class BrokenEmbedder:
     async def embed(self, texts: list[str]) -> list[list[float]]:
         raise EmbeddingsUnavailable("503 embeddings down")
+
+
+class BrokenStore:
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    async def upsert(self, chunks: list[Chunk], embedder: Embedder) -> None:
+        raise self._error
+
+    async def search(
+        self,
+        query: str,
+        embedder: Embedder,
+        k: int = 5,
+    ) -> list[Chunk]:
+        raise self._error
+
+
+class StubInterrupt:
+    def __init__(self, value: object) -> None:
+        self.value = value
+
+
+class StubGraph:
+    def __init__(self, value: object) -> None:
+        self._value = value
+        self.invocations = 0
+
+    async def ainvoke(self, payload: object, config: object) -> dict[str, object]:
+        self.invocations += 1
+        return {
+            "report": "черновик",
+            "__interrupt__": [StubInterrupt(self._value)],
+        }
+
+    async def aget_state(self, config: object) -> object:
+        return None
+
+
+def patch_graph(monkeypatch: pytest.MonkeyPatch, graph: StubGraph) -> None:
+    monkeypatch.setattr("heimdall.cli.build_graph", lambda **kwargs: graph)
 
 
 def tool_call(tool: str, **arguments: object) -> ToolCall:
@@ -258,6 +306,94 @@ def test_ask_reports_model_failure_after_the_resume() -> None:
     assert "модель недоступна" in channel.output
 
 
+def test_ask_says_the_restart_already_ran_when_verify_loses_the_model() -> None:
+    docker = FakeDocker()
+    channel = FakeChannel(answer=True)
+    chat = FlakyChatModel(postgres_chat(), fail_after=4)
+    deps = make_deps(chat=chat, docker=docker, channel=channel)
+
+    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+
+    assert code == 1
+    assert docker.restart_calls == ["postgres"]
+    output = channel.output.lower()
+    assert "рестарт" in output
+    assert "postgres" in output
+
+
+def test_ask_does_not_mention_a_restart_that_never_happened() -> None:
+    channel = FakeChannel(answer=True)
+    chat = FlakyChatModel(postgres_chat(), fail_after=0)
+    deps = make_deps(chat=chat, channel=channel)
+
+    main(["ask", POSTGRES_QUESTION], deps=deps)
+
+    assert "рестарт" not in channel.output.lower()
+
+
+def test_ask_points_at_ingest_when_the_knowledge_store_is_missing() -> None:
+    channel = FakeChannel()
+    store = BrokenStore(asyncpg.UndefinedTableError('relation "chunks" does not exist'))
+    deps = make_deps(chat=postgres_chat(), store=store, channel=channel)
+
+    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+
+    assert code != 0
+    assert "ingest" in channel.output
+
+
+def test_ask_reports_an_unexpected_infrastructure_failure() -> None:
+    channel = FakeChannel()
+    store = BrokenStore(ConnectionRefusedError("postgres refused the connection"))
+    deps = make_deps(chat=postgres_chat(), store=store, channel=channel)
+
+    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+
+    assert code != 0
+    assert "postgres refused the connection" in channel.output
+
+
+def test_ask_fails_when_the_interrupt_payload_is_not_an_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel = FakeChannel(answer=True)
+    graph = StubGraph({"proposed_action": None})
+    patch_graph(monkeypatch, graph)
+    deps = make_deps(chat=postgres_chat(), channel=channel)
+
+    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+
+    assert code != 0
+    assert graph.invocations == 1
+    assert channel.actions == []
+    assert channel.output
+
+
+def test_ask_fails_when_the_graph_is_still_interrupted_after_the_resume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel = FakeChannel(answer=True)
+    graph = StubGraph(
+        {
+            "proposed_action": {
+                "tool": "restart",
+                "target": "postgres",
+                "reason": "контейнер нездоров",
+                "risk": "рестарт рвёт соединения",
+            }
+        }
+    )
+    patch_graph(monkeypatch, graph)
+    deps = make_deps(chat=postgres_chat(), channel=channel)
+
+    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+
+    assert code != 0
+    assert graph.invocations == 2
+    assert len(channel.actions) == 1
+    assert "черновик" not in channel.output
+
+
 def test_ingest_upserts_the_knowledge_directory(tmp_path: Path) -> None:
     store = InMemoryVectorStore()
     channel = FakeChannel()
@@ -292,6 +428,22 @@ def test_ingest_reports_unavailable_embeddings(tmp_path: Path) -> None:
 
     assert code == 1
     assert "эмбеддинги недоступны" in channel.output
+
+
+def test_ingest_reports_an_unreachable_store(tmp_path: Path) -> None:
+    channel = FakeChannel()
+    store = BrokenStore(ConnectionRefusedError("postgres refused the connection"))
+    deps = make_deps(
+        chat=postgres_chat(),
+        channel=channel,
+        store=store,
+        knowledge_dir=write_knowledge(tmp_path),
+    )
+
+    code = main(["ingest"], deps=deps)
+
+    assert code != 0
+    assert "postgres refused the connection" in channel.output
 
 
 def test_main_without_a_command_fails() -> None:

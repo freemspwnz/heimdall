@@ -10,13 +10,14 @@ from typing import Any
 from uuid import uuid4
 
 import aiohttp
+import asyncpg
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
 
 from heimdall.channels.base import UserChannel
 from heimdall.channels.cli import CliChannel
-from heimdall.graph import GraphState, build_graph
+from heimdall.graph import CompiledGraph, GraphState, build_graph
 from heimdall.graph.prompts import EMPTY_REPORT
 from heimdall.models import Action
 from heimdall.providers.gigachat import GigaChatChatModel, GigaChatEmbedder
@@ -36,6 +37,16 @@ from heimdall.tools.victoriametrics import VictoriaMetricsClient
 CHAT_UNAVAILABLE = "модель недоступна"
 EMBEDDINGS_UNAVAILABLE = "эмбеддинги недоступны"
 INGESTED = "Проиндексировано фрагментов"
+STORE_UNAVAILABLE = (
+    "база знаний недоступна, проверьте postgres и выполните heimdall ingest"
+)
+RUN_FAILED = "не удалось выполнить проверку"
+INGEST_FAILED = "не удалось проиндексировать базу знаний"
+BROKEN_PROPOSAL = "агент предложил действие, которое не удалось разобрать"
+STILL_INTERRUPTED = "агент снова ждёт подтверждения, отчёт не готов"
+RESTART_ALREADY_RAN = "Рестарт уже выполнен"
+RESTART_OK = "успешно"
+RESTART_FAILED = "с ошибкой"  # noqa: RUF001
 _UNIX_PREFIX = "unix://"
 
 
@@ -104,27 +115,72 @@ async def _run_ask(question: str, deps: AppDeps) -> int:
         state = dict(
             await graph.ainvoke(_initial_state(question), {"configurable": thread})
         )
-        action = _pending_action(state)
-        if action is not None:
+        if _is_interrupted(state):
+            action = _pending_action(state)
+            if action is None:
+                deps.channel.emit(BROKEN_PROPOSAL)
+                return 1
             decision = "yes" if deps.channel.confirm(action) else "no"
             state = dict(
                 await graph.ainvoke(Command(resume=decision), {"configurable": thread})
             )
+            if _is_interrupted(state):
+                deps.channel.emit(STILL_INTERRUPTED)
+                return 1
     except ChatUnavailable:
-        deps.channel.emit(CHAT_UNAVAILABLE)
-        return 1
+        return await _fail(graph, thread, deps.channel, CHAT_UNAVAILABLE)
+    except asyncpg.PostgresError as exc:
+        return await _fail(graph, thread, deps.channel, f"{STORE_UNAVAILABLE}: {exc}")
+    except Exception as exc:
+        return await _fail(graph, thread, deps.channel, f"{RUN_FAILED}: {exc}")
     deps.channel.emit(_report(state))
     return 0
 
 
+async def _fail(
+    graph: CompiledGraph,
+    thread: dict[str, str],
+    channel: UserChannel,
+    reason: str,
+) -> int:
+    note = await _execution_note(graph, thread)
+    if note is not None:
+        channel.emit(note)
+    channel.emit(reason)
+    return 1
+
+
+async def _execution_note(graph: CompiledGraph, thread: dict[str, str]) -> str | None:
+    try:
+        snapshot = await graph.aget_state({"configurable": thread})
+    except Exception:
+        return None
+    values = getattr(snapshot, "values", None)
+    if not isinstance(values, dict):
+        return None
+    result = values.get("execution_result")
+    if not isinstance(result, dict):
+        return None
+    action = values.get("proposed_action")
+    target = _text(action.get("target")) if isinstance(action, dict) else ""
+    if result.get("ok"):
+        outcome = RESTART_OK
+    else:
+        outcome = f"{RESTART_FAILED}: {_text(result.get('error'))}"
+    return f"{RESTART_ALREADY_RAN}: {target} ({outcome})."
+
+
 async def _run_ingest(deps: AppDeps) -> int:
     store = deps.store
-    if isinstance(store, PgVectorStore):
-        await store.ensure_schema()
     try:
+        if isinstance(store, PgVectorStore):
+            await store.ensure_schema()
         count = await ingest_knowledge(deps.knowledge_dir, store, deps.embedder)
     except EmbeddingsUnavailable:
         deps.channel.emit(EMBEDDINGS_UNAVAILABLE)
+        return 1
+    except Exception as exc:
+        deps.channel.emit(f"{INGEST_FAILED}: {exc}")
         return 1
     deps.channel.emit(f"{INGESTED}: {count}")
     return 0
@@ -143,6 +199,10 @@ def _initial_state(question: str) -> GraphState:
         execution_result=None,
         report=None,
     )
+
+
+def _is_interrupted(state: dict[str, Any]) -> bool:
+    return bool(state.get("__interrupt__"))
 
 
 def _pending_action(state: dict[str, Any]) -> Action | None:
