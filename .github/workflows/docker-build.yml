@@ -73,6 +73,15 @@ jobs:
           cache-from: type=gha,scope=${{ inputs.target }}
           cache-to: type=gha,mode=max,scope=${{ inputs.target }}
 
+      - name: Pull image for smoke
+        if: inputs.push
+        env:
+          IMAGE: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          FIRST_IMAGE=$(echo "$IMAGE" | head -n1)
+          docker pull "$FIRST_IMAGE"
+
       - name: Smoke test (linux/amd64)
         env:
           IMAGE: ${{ steps.meta.outputs.tags }}
