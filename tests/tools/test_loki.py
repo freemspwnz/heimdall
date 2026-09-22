@@ -76,6 +76,39 @@ async def test_loki_http_500_is_observation_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_loki_client_error_becomes_observation_error() -> None:
+    import aiohttp
+
+    session = MagicMock()
+
+    class _ClientErr:
+        async def __aenter__(self) -> None:
+            raise aiohttp.ClientError("boom")
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    session.get = MagicMock(return_value=_ClientErr())
+    client = LokiClient("http://loki:3100", session)
+    obs = await client.query('{container="postgres"}')
+    assert obs.ok is False
+    assert "boom" in (obs.error or "")
+
+
+@pytest.mark.asyncio
+async def test_loki_http_500_error_is_truncated() -> None:
+    huge = "x" * 8000
+    session = MagicMock()
+    session.get = MagicMock(return_value=_response(500, huge))
+    client = LokiClient("http://loki:3100", session)
+    obs = await client.query('{job="traefik"}')
+    assert obs.ok is False
+    assert obs.error is not None
+    assert len(obs.error) <= 4010
+    assert "500" in obs.error
+
+
+@pytest.mark.asyncio
 async def test_loki_empty_streams_is_ok() -> None:
     body: dict[str, object] = {"data": {"result": []}}
     session = MagicMock()

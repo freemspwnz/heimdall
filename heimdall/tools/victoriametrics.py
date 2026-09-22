@@ -66,7 +66,7 @@ class VictoriaMetricsClient:
                         source=_SOURCE,
                         ok=False,
                         payload="",
-                        error=f"{resp.status} {text}",
+                        error=f"{resp.status} {truncate_payload(text)}",
                     )
                 try:
                     parsed: object = json.loads(text)

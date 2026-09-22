@@ -162,6 +162,14 @@ def patch_production_deps(monkeypatch: pytest.MonkeyPatch, error: Exception) -> 
     monkeypatch.setattr("heimdall.cli._production_deps", lambda: ExplodingDeps(error))
 
 
+def patch_ingest_production_deps(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    monkeypatch.setattr(
+        "heimdall.cli._ingest_production_deps", lambda: ExplodingDeps(error)
+    )
+
+
 def tool_call(tool: str, **arguments: object) -> ToolCall:
     return ToolCall(id=f"call-{next(_ids)}", name=tool, arguments=dict(arguments))
 
@@ -487,12 +495,42 @@ def test_ingest_reports_a_broken_production_setup(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    patch_production_deps(monkeypatch, OSError("unable to open database file"))
+    patch_ingest_production_deps(monkeypatch, OSError("unable to open database file"))
 
     code = main(["ingest"])
 
     assert code == 1
     assert "unable to open database file" in capsys.readouterr().err
+
+
+def test_ingest_uses_ingest_production_deps(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    class Marker:
+        async def __aenter__(self) -> AppDeps:
+            seen.append("ingest")
+            raise RuntimeError("stop-after-wiring")
+
+        async def __aexit__(self, *exc_info: object) -> None:
+            return None
+
+    monkeypatch.setattr("heimdall.cli._ingest_production_deps", lambda: Marker())
+    monkeypatch.setattr(
+        "heimdall.cli._production_deps",
+        lambda: (_ for _ in ()).throw(AssertionError("ask deps used for ingest")),
+    )
+
+    code = main(["ingest"])
+
+    assert code == 1
+    assert seen == ["ingest"]
+
+
+def test_docker_connector_requires_unix_socket() -> None:
+    from heimdall.cli import _docker_connector
+
+    with pytest.raises(ValueError, match="unix://"):
+        _docker_connector("tcp://127.0.0.1:2375")
 
 
 def test_main_without_a_command_fails() -> None:

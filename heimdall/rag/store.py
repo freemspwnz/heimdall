@@ -25,10 +25,10 @@ class InMemoryVectorStore:
 
     async def upsert(self, chunks: list[Chunk], embedder: Embedder) -> None:
         if not chunks:
+            self._items = []
             return
         vectors = await embedder.embed([chunk.text for chunk in chunks])
-        for chunk, vector in zip(chunks, vectors, strict=True):
-            self._items.append((chunk, vector))
+        self._items = list(zip(chunks, vectors, strict=True))
 
     async def search(
         self,
@@ -60,6 +60,14 @@ class PgVectorStore:
 
     async def upsert(self, chunks: list[Chunk], embedder: Embedder) -> None:
         if not chunks:
+            conn = await asyncpg.connect(self._dsn)
+            try:
+                try:
+                    await conn.execute("DELETE FROM chunks")
+                except asyncpg.UndefinedTableError:
+                    return
+            finally:
+                await conn.close()
             return
         vectors = await embedder.embed([chunk.text for chunk in chunks])
         dimension = len(vectors[0])

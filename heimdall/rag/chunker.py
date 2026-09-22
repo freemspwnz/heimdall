@@ -1,11 +1,14 @@
+import re
+
 from heimdall.models import Chunk
 
 _MAX_SECTION_CHARS = 800
+_SECTION_HEADING = re.compile(r"^#{2,}\s")
 
 
 def chunk_markdown(text: str, source: str) -> list[Chunk]:
     chunks: list[Chunk] = []
-    for section in _split_h2_sections(text):
+    for section in _split_section_headings(text):
         parts = (
             _split_paragraphs(section)
             if len(section) > _MAX_SECTION_CHARS
@@ -19,11 +22,11 @@ def chunk_markdown(text: str, source: str) -> list[Chunk]:
     return chunks
 
 
-def _split_h2_sections(text: str) -> list[str]:
+def _split_section_headings(text: str) -> list[str]:
     sections: list[str] = []
     current: list[str] = []
     for line in text.splitlines(keepends=True):
-        if line.startswith("## ") and current:
+        if _SECTION_HEADING.match(line) and current:
             sections.append("".join(current))
             current = [line]
         else:

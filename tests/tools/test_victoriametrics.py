@@ -55,6 +55,57 @@ async def test_vm_http_500_is_observation_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_vm_timeout_becomes_observation_error() -> None:
+    session = MagicMock()
+
+    class _Timeout:
+        async def __aenter__(self) -> None:
+            raise TimeoutError("slow")
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    session.get = MagicMock(return_value=_Timeout())
+    client = VictoriaMetricsClient("http://vm:8428", session)
+    obs = await client.query("pg_up")
+    assert obs.ok is False
+    assert obs.error
+
+
+@pytest.mark.asyncio
+async def test_vm_client_error_becomes_observation_error() -> None:
+    import aiohttp
+
+    session = MagicMock()
+
+    class _ClientErr:
+        async def __aenter__(self) -> None:
+            raise aiohttp.ClientError("boom")
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    session.get = MagicMock(return_value=_ClientErr())
+    client = VictoriaMetricsClient("http://vm:8428", session)
+    obs = await client.query("pg_up")
+    assert obs.ok is False
+    assert "boom" in (obs.error or "")
+
+
+@pytest.mark.asyncio
+async def test_vm_http_500_error_is_truncated() -> None:
+    huge = "x" * 8000
+    session = MagicMock()
+    session.get = MagicMock(return_value=_response(500, huge))
+    client = VictoriaMetricsClient("http://vm:8428", session)
+    obs = await client.query("pg_up")
+    assert obs.ok is False
+    assert obs.error is not None
+    assert len(obs.error) <= 4010
+    assert "500" in obs.error
+
+
+@pytest.mark.asyncio
 async def test_vm_empty_result_is_ok() -> None:
     body: dict[str, object] = {
         "status": "success",

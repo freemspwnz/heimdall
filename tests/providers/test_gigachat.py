@@ -67,7 +67,8 @@ async def test_fake_chat_model_pops_tool_calls_then_content() -> None:
     second = await model.complete(messages)
     assert second.content == "container is unhealthy"
     assert second.tool_calls == []
-    assert model.calls[0]["tools"] is tools
+    assert model.calls[0]["tools"] == tools
+    assert model.calls[0]["tools"] is not tools
     assert model.calls[1]["tools"] is None
 
 
@@ -287,6 +288,38 @@ async def test_gigachat_verify_ssl_false_passes_ssl_false() -> None:
     await model.complete([ChatMessage(role="user", content="q")])
     for call in session.post.call_args_list:
         assert call.kwargs["ssl"] is False
+
+
+@pytest.mark.asyncio
+async def test_gigachat_verify_ssl_true_passes_ssl_true() -> None:
+    settings = Settings(
+        gigachat_credentials="dGVzdA==",
+        postgres_dsn="postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall",
+        gigachat_verify_ssl=True,
+        _env_file=None,
+    )
+    session = _session(
+        [
+            _response(200, {"access_token": "tok-1"}),
+            _response(200, {"choices": [{"message": {"content": "ok"}}]}),
+        ]
+    )
+    model = GigaChatChatModel(settings, session)
+    await model.complete([ChatMessage(role="user", content="q")])
+    for call in session.post.call_args_list:
+        assert call.kwargs["ssl"] is True
+
+
+@pytest.mark.asyncio
+async def test_fake_chat_model_stores_message_copies() -> None:
+    model = FakeChatModel([ScriptedTurn(content="ok")])
+    messages = [ChatMessage(role="user", content="q")]
+    await model.complete(messages)
+    messages.append(ChatMessage(role="assistant", content="later"))
+    stored = model.calls[0]["messages"]
+    assert isinstance(stored, list)
+    assert len(stored) == 1
+    assert stored[0].content == "q"
 
 
 @pytest.mark.asyncio

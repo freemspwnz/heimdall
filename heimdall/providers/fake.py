@@ -32,7 +32,12 @@ class FakeChatModel:
         messages: list[ChatMessage],
         tools: list[ToolSpec] | None = None,
     ) -> ChatResult:
-        self.calls.append({"messages": messages, "tools": tools})
+        self.calls.append(
+            {
+                "messages": list(messages),
+                "tools": list(tools) if tools is not None else None,
+            }
+        )
         if not self._turns:
             return ChatResult(content="", tool_calls=[])
         turn = self._turns.pop(0)

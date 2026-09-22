@@ -415,10 +415,12 @@ def _tail(value: object) -> int:
     if isinstance(value, bool):
         return MAX_OBSERVATION_LINES
     if isinstance(value, int):
-        return value
-    if isinstance(value, str) and value.strip().isdigit():
-        return int(value.strip())
-    return MAX_OBSERVATION_LINES
+        candidate = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        candidate = int(value.strip())
+    else:
+        return MAX_OBSERVATION_LINES
+    return max(1, min(candidate, MAX_OBSERVATION_LINES))
 
 
 def _text(value: object) -> str:

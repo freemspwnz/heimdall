@@ -23,7 +23,11 @@ def _response(status: int, body: JsonBody | str | bytes) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_docker_ps_lists_names_and_status() -> None:
+async def test_docker_client_rejects_non_unix_host() -> None:
+    session = MagicMock()
+    with pytest.raises(ValueError, match="unix://"):
+        DockerClient("tcp://127.0.0.1:2375", session)
+
     session = MagicMock()
     session.get = MagicMock(
         return_value=_response(
@@ -131,3 +135,66 @@ async def test_docker_ps_http_500_is_observation_error() -> None:
     assert obs.ok is False
     assert obs.source == "docker"
     assert "500" in (obs.error or "")
+
+
+@pytest.mark.asyncio
+async def test_docker_ps_timeout_becomes_observation_error() -> None:
+    session = MagicMock()
+
+    class _Timeout:
+        async def __aenter__(self) -> None:
+            raise TimeoutError("slow")
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    session.get = MagicMock(return_value=_Timeout())
+    client = DockerClient("unix:///var/run/docker.sock", session)
+    obs = await client.ps()
+    assert obs.ok is False
+    assert obs.error
+
+
+@pytest.mark.asyncio
+async def test_docker_ps_client_error_becomes_observation_error() -> None:
+    import aiohttp
+
+    session = MagicMock()
+
+    class _ClientErr:
+        async def __aenter__(self) -> None:
+            raise aiohttp.ClientError("boom")
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    session.get = MagicMock(return_value=_ClientErr())
+    client = DockerClient("unix:///var/run/docker.sock", session)
+    obs = await client.ps()
+    assert obs.ok is False
+    assert "boom" in (obs.error or "")
+
+
+@pytest.mark.asyncio
+async def test_docker_logs_demuxes_multiplexed_frames() -> None:
+    payload = b"ready for connections\n"
+    frame = b"\x01\x00\x00\x00" + len(payload).to_bytes(4, "big") + payload
+    session = MagicMock()
+    session.get = MagicMock(return_value=_response(200, frame))
+    client = DockerClient("unix:///var/run/docker.sock", session)
+    obs = await client.logs("postgres")
+    assert obs.ok is True
+    assert obs.payload == "ready for connections\n"
+
+
+@pytest.mark.asyncio
+async def test_docker_http_500_error_is_truncated() -> None:
+    huge = "x" * 8000
+    session = MagicMock()
+    session.get = MagicMock(return_value=_response(500, huge))
+    client = DockerClient("unix:///var/run/docker.sock", session)
+    obs = await client.ps()
+    assert obs.ok is False
+    assert obs.error is not None
+    assert len(obs.error) <= 4010
+    assert "500" in obs.error

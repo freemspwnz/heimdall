@@ -42,6 +42,28 @@ async def test_empty_store_search_returns_empty_list() -> None:
 
 
 @pytest.mark.asyncio
+async def test_inmemory_upsert_replaces_previous_chunks() -> None:
+    store = InMemoryVectorStore()
+    embedder = FakeEmbedder()
+    first = chunk_markdown(inventory, "inventory.md")
+    second = chunk_markdown(pg_runbook, "postgres.md")
+    await store.upsert(first, embedder)
+    await store.upsert(second, embedder)
+    hits = await store.search(POSTGRES_QUERY, embedder, k=10)
+    assert hits
+    assert all(h.source == "postgres.md" for h in hits)
+
+
+@pytest.mark.asyncio
+async def test_inmemory_empty_upsert_clears_store() -> None:
+    store = InMemoryVectorStore()
+    embedder = FakeEmbedder()
+    await store.upsert(chunk_markdown(inventory, "inventory.md"), embedder)
+    await store.upsert([], embedder)
+    assert await store.search(POSTGRES_QUERY, embedder) == []
+
+
+@pytest.mark.asyncio
 async def test_postgres_question_retrieves_postgres_not_jellyfin() -> None:
     store = InMemoryVectorStore()
     embedder = FakeEmbedder()

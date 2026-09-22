@@ -2,7 +2,7 @@ import argparse
 import asyncio
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,6 +11,7 @@ from uuid import uuid4
 import aiohttp
 import asyncpg
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
 
@@ -87,18 +88,24 @@ def _parser() -> argparse.ArgumentParser:
 async def _ask(question: str, deps: AppDeps | None) -> int:
     if deps is not None:
         return await _run_ask(question, deps)
-    return await _in_production(lambda production: _run_ask(question, production))
+    return await _in_production(
+        lambda production: _run_ask(question, production),
+        _production_deps,
+    )
 
 
 async def _ingest(deps: AppDeps | None) -> int:
     if deps is not None:
         return await _run_ingest(deps)
-    return await _in_production(_run_ingest)
+    return await _in_production(_run_ingest, _ingest_production_deps)
 
 
-async def _in_production(run: Callable[[AppDeps], Awaitable[int]]) -> int:
+async def _in_production(
+    run: Callable[[AppDeps], Awaitable[int]],
+    deps_factory: Callable[[], AbstractAsyncContextManager[AppDeps]],
+) -> int:
     try:
-        async with _production_deps() as production:
+        async with deps_factory() as production:
             return await run(production)
     except Exception as exc:
         print(f"{STARTUP_FAILED}: {exc}", file=sys.stderr)
@@ -242,15 +249,35 @@ def _text(value: object) -> str:
 
 
 def _docker_connector(docker_host: str) -> aiohttp.BaseConnector:
-    if docker_host.startswith(_UNIX_PREFIX):
-        return aiohttp.UnixConnector(path=docker_host.removeprefix(_UNIX_PREFIX))
-    return aiohttp.TCPConnector()
+    if not docker_host.startswith(_UNIX_PREFIX):
+        msg = f"DOCKER_HOST must be a unix:// socket, got {docker_host!r}"
+        raise ValueError(msg)
+    return aiohttp.UnixConnector(path=docker_host.removeprefix(_UNIX_PREFIX))
 
 
 def _make_embedder(settings: Settings, http: aiohttp.ClientSession) -> Embedder:
     if settings.embedder == "gigachat":
         return GigaChatEmbedder(settings, http)
     return LocalEmbedder(settings.local_embedder_model)
+
+
+def _core_deps(
+    settings: Settings,
+    http: aiohttp.ClientSession,
+    docker_http: aiohttp.ClientSession,
+    checkpointer: BaseCheckpointSaver[Any],
+) -> AppDeps:
+    return AppDeps(
+        store=PgVectorStore(settings.postgres_dsn),
+        embedder=_make_embedder(settings, http),
+        chat=GigaChatChatModel(settings, http),
+        docker=DockerClient(settings.docker_host, docker_http),
+        loki=LokiClient(settings.loki_url, http),
+        vm=VictoriaMetricsClient(settings.victoriametrics_url, http),
+        channel=CliChannel(),
+        checkpointer=checkpointer,
+        knowledge_dir=settings.knowledge_dir,
+    )
 
 
 @asynccontextmanager
@@ -263,14 +290,16 @@ async def _production_deps() -> AsyncIterator[AppDeps]:
         ) as docker_http,
         AsyncSqliteSaver.from_conn_string(settings.checkpoint_path) as checkpointer,
     ):
-        yield AppDeps(
-            store=PgVectorStore(settings.postgres_dsn),
-            embedder=_make_embedder(settings, http),
-            chat=GigaChatChatModel(settings, http),
-            docker=DockerClient(settings.docker_host, docker_http),
-            loki=LokiClient(settings.loki_url, http),
-            vm=VictoriaMetricsClient(settings.victoriametrics_url, http),
-            channel=CliChannel(),
-            checkpointer=checkpointer,
-            knowledge_dir=settings.knowledge_dir,
-        )
+        yield _core_deps(settings, http, docker_http, checkpointer)
+
+
+@asynccontextmanager
+async def _ingest_production_deps() -> AsyncIterator[AppDeps]:
+    settings = Settings()  # type: ignore[call-arg]
+    async with (
+        aiohttp.ClientSession() as http,
+        aiohttp.ClientSession(
+            connector=_docker_connector(settings.docker_host)
+        ) as docker_http,
+    ):
+        yield _core_deps(settings, http, docker_http, MemorySaver())

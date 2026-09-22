@@ -11,12 +11,6 @@ _SOURCE = "docker"
 _ENGINE_BASE = "http://localhost"
 
 
-def _unix_socket_path(docker_host: str) -> str:
-    if docker_host.startswith("unix://"):
-        return docker_host.removeprefix("unix://")
-    return docker_host
-
-
 def _engine_url(path: str) -> str:
     return f"{_ENGINE_BASE}{path}"
 
@@ -89,9 +83,11 @@ def _logs_text(raw: bytes) -> str:
 
 class DockerClient:
     def __init__(self, docker_host: str, session: aiohttp.ClientSession) -> None:
+        if not docker_host.startswith("unix://"):
+            msg = f"DOCKER_HOST must be a unix:// socket, got {docker_host!r}"
+            raise ValueError(msg)
         self._docker_host = docker_host
         self._session = session
-        self._socket_path = _unix_socket_path(docker_host)
 
     async def ps(self) -> Observation:
         url = _engine_url("/containers/json")
@@ -101,7 +97,7 @@ class DockerClient:
             async with self._session.get(url, params=params, timeout=timeout) as resp:
                 text = await resp.text()
                 if resp.status != 200:
-                    return _fail(f"{resp.status} {text}")
+                    return _fail(f"{resp.status} {truncate_payload(text)}")
                 try:
                     parsed: object = json.loads(text)
                 except json.JSONDecodeError as exc:
@@ -126,7 +122,7 @@ class DockerClient:
             async with self._session.get(url, timeout=timeout) as resp:
                 text = await resp.text()
                 if resp.status != 200:
-                    return _fail(f"{resp.status} {text}")
+                    return _fail(f"{resp.status} {truncate_payload(text)}")
                 return _ok(truncate_payload(text))
         except TimeoutError as exc:
             return _fail(str(exc) or "timeout")
@@ -145,7 +141,7 @@ class DockerClient:
             async with self._session.get(url, params=params, timeout=timeout) as resp:
                 if resp.status != 200:
                     text = await resp.text()
-                    return _fail(f"{resp.status} {text}")
+                    return _fail(f"{resp.status} {truncate_payload(text)}")
                 raw = await resp.read()
                 return _ok(truncate_payload(_logs_text(raw)))
         except TimeoutError as exc:
@@ -162,7 +158,7 @@ class DockerClient:
             async with self._session.post(url, timeout=timeout) as resp:
                 text = await resp.text()
                 if resp.status not in (200, 204):
-                    return _fail(f"{resp.status} {text}")
+                    return _fail(f"{resp.status} {truncate_payload(text)}")
                 return _ok(text)
         except TimeoutError as exc:
             return _fail(str(exc) or "timeout")

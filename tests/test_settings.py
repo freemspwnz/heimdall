@@ -28,3 +28,19 @@ def test_settings_gigachat_ultra_defaults(monkeypatch) -> None:
     s = Settings(_env_file=None)
     assert s.gigachat_base_url == "https://api.giga.chat/v1"
     assert s.gigachat_chat_model == "GigaChat-3-Ultra"
+
+
+def test_settings_optional_paths_and_oauth_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("GIGACHAT_CREDENTIALS", "secret-key")
+    monkeypatch.setenv(
+        "POSTGRES_DSN", "postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall"
+    )
+    monkeypatch.delenv("GIGACHAT_OAUTH_URL", raising=False)
+    monkeypatch.delenv("GIGACHAT_SCOPE", raising=False)
+    monkeypatch.delenv("CHECKPOINT_PATH", raising=False)
+    monkeypatch.delenv("KNOWLEDGE_DIR", raising=False)
+    s = Settings(_env_file=None)
+    assert s.gigachat_oauth_url.endswith("/oauth")
+    assert s.gigachat_scope == "GIGACHAT_API_PERS"
+    assert s.checkpoint_path == "heimdall-checkpoints.sqlite"
+    assert s.knowledge_dir.as_posix() == "docs/knowledge"
