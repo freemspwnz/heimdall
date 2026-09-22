@@ -35,28 +35,23 @@ def _gigachat_functions(tools: list[ToolSpec]) -> list[dict[str, object]]:
     ]
 
 
-def _openai_tool_calls(calls: list[ToolCall]) -> list[dict[str, object]]:
-    return [
-        {
-            "id": call.id,
-            "type": "function",
-            "function": {
-                "name": call.name,
-                "arguments": json.dumps(call.arguments, ensure_ascii=False),
-            },
-        }
-        for call in calls
-    ]
-
-
 def _message_payload(message: ChatMessage) -> dict[str, object]:
-    payload: dict[str, object] = {"role": message.role, "content": message.content}
-    if message.tool_call_id is not None:
-        payload["tool_call_id"] = message.tool_call_id
-    if message.name is not None:
-        payload["name"] = message.name
+    if message.role == "tool":
+        payload: dict[str, object] = {
+            "role": "function",
+            "content": message.content,
+        }
+        if message.name is not None:
+            payload["name"] = message.name
+        return payload
+
+    payload = {"role": message.role, "content": message.content}
     if message.tool_calls:
-        payload["tool_calls"] = _openai_tool_calls(message.tool_calls)
+        call = message.tool_calls[0]  # GigaChat: one call per assistant turn
+        payload["function_call"] = {
+            "name": call.name,
+            "arguments": call.arguments,
+        }
     return payload
 
 

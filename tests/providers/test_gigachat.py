@@ -144,7 +144,7 @@ async def test_gigachat_chat_parses_tool_calls_after_oauth() -> None:
 
 
 @pytest.mark.asyncio
-async def test_gigachat_serializes_assistant_tool_calls_openai_style() -> None:
+async def test_gigachat_serializes_investigate_history_as_native_functions() -> None:
     settings = _settings()
     session = _session(
         [
@@ -153,37 +153,39 @@ async def test_gigachat_serializes_assistant_tool_calls_openai_style() -> None:
         ]
     )
     model = GigaChatChatModel(settings, session)
-    call = ToolCall(
-        id="call_1",
-        name="docker_inspect",
-        arguments={"name": "postgres"},
-    )
-    await model.complete(
-        [
-            ChatMessage(role="user", content="q"),
-            ChatMessage(role="assistant", content="", tool_calls=[call]),
-            ChatMessage(
-                role="tool",
-                content="unhealthy",
-                tool_call_id="call_1",
-                name="docker_inspect",
-            ),
-        ]
-    )
-    messages = session.post.call_args_list[1].kwargs["json"]["messages"]
-    assert "tool_calls" not in messages[0]
-    assert messages[1]["tool_calls"] == [
-        {
-            "id": "call_1",
-            "type": "function",
-            "function": {
-                "name": "docker_inspect",
-                "arguments": '{"name": "postgres"}',
-            },
-        }
+    messages = [
+        ChatMessage(role="user", content="q"),
+        ChatMessage(
+            role="assistant",
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_1",
+                    name="docker_inspect",
+                    arguments={"name": "postgres"},
+                )
+            ],
+        ),
+        ChatMessage(
+            role="tool",
+            content="ok payload",
+            tool_call_id="call_1",
+            name="docker_inspect",
+        ),
     ]
-    assert messages[2]["tool_call_id"] == "call_1"
-    assert messages[2]["name"] == "docker_inspect"
+    await model.complete(messages)
+    wire = session.post.call_args_list[1].kwargs["json"]["messages"]
+    assert wire[1]["role"] == "assistant"
+    assert wire[1]["function_call"] == {
+        "name": "docker_inspect",
+        "arguments": {"name": "postgres"},
+    }
+    assert "tool_calls" not in wire[1]
+    assert wire[2] == {
+        "role": "function",
+        "name": "docker_inspect",
+        "content": "ok payload",
+    }
 
 
 @pytest.mark.asyncio
