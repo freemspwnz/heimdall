@@ -24,8 +24,7 @@ def _load_sentence_transformer(model_name: str) -> _Encodable:
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:
         raise EmbeddingsUnavailable(
-            "sentence-transformers is not installed; "
-            "run: uv sync --group embeddings"
+            "sentence-transformers is not installed; run: uv sync --group embeddings"
         ) from exc
     return SentenceTransformer(model_name)  # type: ignore[no-any-return]
 
@@ -42,8 +41,8 @@ class LocalEmbedder:
         *,
         model: _Encodable | None = None,
     ) -> None:
-        self._model = model if model is not None else _load_sentence_transformer(
-            model_name
+        self._model = (
+            model if model is not None else _load_sentence_transformer(model_name)
         )
 
     async def embed(
