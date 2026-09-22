@@ -14,7 +14,13 @@ DSN = "postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall"
 
 
 class _UnavailableEmbedder:
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self,
+        texts: list[str],
+        *,
+        query: bool = False,
+    ) -> list[list[float]]:
+        del texts, query
         raise EmbeddingsUnavailable("embeddings down")
 
 

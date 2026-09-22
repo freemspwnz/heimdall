@@ -22,6 +22,7 @@ from heimdall.graph import CompiledGraph, GraphState, build_graph
 from heimdall.graph.prompts import EMPTY_REPORT
 from heimdall.models import Action
 from heimdall.providers.gigachat import GigaChatChatModel, GigaChatEmbedder
+from heimdall.providers.local import LocalEmbedder
 from heimdall.providers.protocols import (
     ChatModel,
     ChatUnavailable,
@@ -251,6 +252,12 @@ def _docker_connector(docker_host: str) -> aiohttp.BaseConnector:
     return aiohttp.TCPConnector()
 
 
+def _make_embedder(settings: Settings, http: aiohttp.ClientSession) -> Embedder:
+    if settings.embedder == "gigachat":
+        return GigaChatEmbedder(settings, http)
+    return LocalEmbedder(settings.local_embedder_model)
+
+
 @asynccontextmanager
 async def _production_deps() -> AsyncIterator[AppDeps]:
     settings = Settings()  # type: ignore[call-arg]
@@ -263,7 +270,7 @@ async def _production_deps() -> AsyncIterator[AppDeps]:
     ):
         yield AppDeps(
             store=PgVectorStore(settings.postgres_dsn),
-            embedder=GigaChatEmbedder(settings, http),
+            embedder=_make_embedder(settings, http),
             chat=GigaChatChatModel(settings, http),
             docker=DockerClient(settings.docker_host, docker_http),
             loki=LokiClient(settings.loki_url, http),

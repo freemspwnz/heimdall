@@ -250,7 +250,13 @@ class GigaChatEmbedder:
         self._http = _GigaChatHttp(settings, session)
         self._base_url = settings.gigachat_base_url.rstrip("/")
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self,
+        texts: list[str],
+        *,
+        query: bool = False,
+    ) -> list[list[float]]:
+        del query
         url = f"{self._base_url}/embeddings"
         parsed = await self._http.post_json(
             url,

@@ -9,7 +9,7 @@ v1 is a local CLI on the same host as the stack. No SSH, no Telegram, no unrestr
 ## Stack
 
 - Python 3.12+, asyncio, LangGraph, uv
-- GigaChat for chat and embeddings
+- GigaChat for chat; local `sentence-transformers` embeddings (`intfloat/multilingual-e5-base` by default)
 - pgvector in a dedicated `heimdall` database on the existing Postgres
 - aiohttp clients for Loki and VictoriaMetrics
 - Docker Engine API via the local Unix socket
@@ -17,10 +17,12 @@ v1 is a local CLI on the same host as the stack. No SSH, no Telegram, no unrestr
 ## Setup
 
 ```bash
-uv sync --group dev
+uv sync --group dev --group embeddings
 cp .env.example .env
 # fill GIGACHAT_CREDENTIALS and POSTGRES_DSN (and URLs if needed)
 ```
+
+Torch is pinned to the **CPU** wheel (no CUDA) — suitable for hosts like Intel N100. `EMBEDDER=local` (default) uses `LOCAL_EMBEDDER_MODEL`. First run downloads the model from Hugging Face (~1 GB). Set `EMBEDDER=gigachat` only if your GigaChat plan includes embeddings.
 
 Create a dedicated database and enable pgvector (as a Postgres superuser):
 
@@ -28,6 +30,12 @@ Create a dedicated database and enable pgvector (as a Postgres superuser):
 CREATE DATABASE heimdall;
 \c heimdall
 CREATE EXTENSION vector;
+```
+
+If you previously indexed with another embedder (e.g. GigaChat), drop the old table before re-ingest — vector dimensions differ:
+
+```sql
+DROP TABLE IF EXISTS chunks;
 ```
 
 Index the knowledge base, then ask:

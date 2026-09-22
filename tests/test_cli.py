@@ -94,7 +94,13 @@ class FlakyChatModel:
 
 
 class BrokenEmbedder:
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(
+        self,
+        texts: list[str],
+        *,
+        query: bool = False,
+    ) -> list[list[float]]:
+        del texts, query
         raise EmbeddingsUnavailable("503 embeddings down")
 
 

@@ -40,7 +40,7 @@ class InMemoryVectorStore:
     ) -> list[Chunk]:
         if not self._items:
             return []
-        query_vector = (await embedder.embed([query]))[0]
+        query_vector = (await embedder.embed([query], query=True))[0]
         scored: list[tuple[float, int, Chunk]] = [
             (_cosine_similarity(query_vector, vector), index, chunk)
             for index, (chunk, vector) in enumerate(self._items)
@@ -94,7 +94,7 @@ class PgVectorStore:
         embedder: Embedder,
         k: int = RETRIEVE_TOP_K,
     ) -> list[Chunk]:
-        query_vector = (await embedder.embed([query]))[0]
+        query_vector = (await embedder.embed([query], query=True))[0]
         conn = await asyncpg.connect(self._dsn)
         try:
             rows = await conn.fetch(

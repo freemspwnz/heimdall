@@ -33,6 +33,18 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
 ]
+embeddings = [
+    "sentence-transformers>=3.0",
+    "torch",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -52,5 +64,5 @@ strict = true
 packages = ["heimdall"]
 
 [[tool.mypy.overrides]]
-module = ["langgraph.*", "asyncpg.*"]
+module = ["langgraph.*", "asyncpg.*", "sentence_transformers.*"]
 ignore_missing_imports = true

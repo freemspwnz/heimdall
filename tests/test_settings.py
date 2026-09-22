@@ -14,3 +14,5 @@ def test_settings_read_env(monkeypatch) -> None:
     assert s.victoriametrics_url == "http://127.0.0.1:8428"
     assert s.docker_host == "unix:///var/run/docker.sock"
     assert s.gigachat_base_url == "https://gigachat.devices.sberbank.ru/api/v1"
+    assert s.embedder == "local"
+    assert s.local_embedder_model == "intfloat/multilingual-e5-base"

@@ -1,6 +1,9 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from heimdall.providers.local import DEFAULT_LOCAL_MODEL
 
 
 class Settings(BaseSettings):
@@ -21,3 +24,5 @@ class Settings(BaseSettings):
     postgres_dsn: str
     checkpoint_path: str = "heimdall-checkpoints.sqlite"
     knowledge_dir: Path = Path("docs/knowledge")
+    embedder: Literal["local", "gigachat"] = "local"
+    local_embedder_model: str = DEFAULT_LOCAL_MODEL
