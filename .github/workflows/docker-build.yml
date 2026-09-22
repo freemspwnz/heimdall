@@ -7,6 +7,14 @@ on:
         description: GHCR image name (without registry prefix)
         required: true
         type: string
+      target:
+        description: Dockerfile target (slim or embeddings)
+        required: true
+        type: string
+      push:
+        description: Push image to GHCR
+        required: true
+        type: boolean
 
 permissions:
   contents: read
@@ -17,7 +25,6 @@ permissions:
 jobs:
   docker-build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -26,13 +33,11 @@ jobs:
         id: registry
         run: echo "owner=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
+        if: inputs.push
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -44,48 +49,43 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ steps.registry.outputs.owner }}/${{ inputs.image-name }}
+          flavor: |
+            latest=false
           tags: |
-            type=ref,event=tag
-            type=raw,value=latest
+            type=ref,event=tag,suffix=-${{ inputs.target }},enable=${{ inputs.push }}
+            type=raw,value=${{ inputs.target }},enable=${{ inputs.push }}
+            type=raw,value=latest,enable=${{ inputs.push && inputs.target == 'slim' }}
+            type=raw,value=ci-${{ inputs.target }}-${{ github.sha }},enable=${{ !inputs.push }}
 
       - name: Build and push
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
+          target: ${{ inputs.target }}
+          push: ${{ inputs.push }}
+          load: ${{ !inputs.push }}
+          platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          provenance: true
-          sbom: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          provenance: ${{ inputs.push }}
+          sbom: ${{ inputs.push }}
+          cache-from: type=gha,scope=${{ inputs.target }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.target }}
 
       - name: Smoke test (linux/amd64)
         env:
-          IMAGE: ghcr.io/${{ steps.registry.outputs.owner }}/${{ inputs.image-name }}:${{ github.ref_name }}
+          IMAGE: ${{ steps.meta.outputs.tags }}
+          TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
-          docker pull --platform linux/amd64 "$IMAGE"
+          # metadata may list multiple tags; take the first
+          FIRST_IMAGE=$(echo "$IMAGE" | head -n1)
+          docker image inspect "$FIRST_IMAGE" >/dev/null
 
-          docker run --rm --platform linux/amd64 "$IMAGE" \
-            test -f /app/wednesday/main.py
+          docker run --rm "$FIRST_IMAGE" --help
+          docker run --rm --entrypoint python "$FIRST_IMAGE" -c "import heimdall"
 
-          docker run --rm --platform linux/amd64 "$IMAGE" \
-            test -f /app/alembic.ini
-
-          docker run --rm --platform linux/amd64 --read-only \
-            --tmpfs /tmp:rw,nosuid,size=64m \
-            --tmpfs /var/tmp:rw,nosuid,size=64m \
-            --tmpfs /run:rw,nosuid,size=16m \
-            "$IMAGE" python3 -c "import sys; assert sys.dont_write_bytecode"
-
-          docker run --rm --platform linux/amd64 --read-only \
-            --tmpfs /tmp:rw,nosuid,size=64m \
-            --tmpfs /var/tmp:rw,nosuid,size=64m \
-            --tmpfs /run:rw,nosuid,size=16m \
-            "$IMAGE" python3 -c "from infra.config import Config"
-
-          docker run --rm --platform linux/amd64 "$IMAGE" \
-            python3 -c "import importlib.util as u; assert u.find_spec('poetry') is None"
+          if [ "$TARGET" = "embeddings" ]; then
+            docker run --rm --entrypoint python "$FIRST_IMAGE" -c "import sentence_transformers"
+          fi

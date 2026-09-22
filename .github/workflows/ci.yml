@@ -48,9 +48,34 @@ jobs:
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  # docker jobs updated in Task 5
-  docker-build:
-    name: Docker image (release tags only)
+  docker-verify-slim:
+    name: Docker build slim (no push)
+    needs: [lint, format, mypy, actionlint, pytest]
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      image-name: heimdall
+      target: slim
+      push: false
+
+  docker-verify-embeddings:
+    name: Docker build embeddings (no push)
+    needs: [lint, format, mypy, actionlint, pytest]
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      image-name: heimdall
+      target: embeddings
+      push: false
+
+  docker-publish-slim:
+    name: Docker publish slim
     needs: [lint, format, mypy, actionlint, pytest]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -61,10 +86,27 @@ jobs:
     uses: ./.github/workflows/docker-build.yml
     with:
       image-name: heimdall
+      target: slim
+      push: true
+
+  docker-publish-embeddings:
+    name: Docker publish embeddings
+    needs: [lint, format, mypy, actionlint, pytest]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      image-name: heimdall
+      target: embeddings
+      push: true
 
   github-release:
     name: GitHub Release
-    needs: [docker-build]
+    needs: [docker-publish-slim, docker-publish-embeddings]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
