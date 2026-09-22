@@ -1,0 +1,30 @@
+services:
+  heimdall:
+    build:
+      context: .
+      target: ${HEIMDALL_IMAGE_TARGET:-embeddings}
+    image: heimdall:${HEIMDALL_IMAGE_TARGET:-embeddings}
+    env_file:
+      - .env
+    environment:
+      CHECKPOINT_PATH: /data/heimdall-checkpoints.sqlite
+      HF_HOME: /data/hf
+      KNOWLEDGE_DIR: /app/docs/knowledge
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/heimdall-checkpoints.sqlite:/data/heimdall-checkpoints.sqlite
+      - ./docs/knowledge:/app/docs/knowledge:ro
+      - hf-cache:/data/hf
+    networks:
+      - lab
+    stdin_open: true
+    tty: true
+    entrypoint: ["heimdall"]
+
+networks:
+  lab:
+    external: true
+    name: ${HEIMDALL_LAB_NETWORK:-lab}
+
+volumes:
+  hf-cache:

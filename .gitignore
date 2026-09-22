@@ -35,3 +35,6 @@ junit.xml
 .DS_Store
 .idea/
 .vscode/
+
+# Container / runtime data (checkpointer bind, etc.)
+data/
