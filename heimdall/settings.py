@@ -14,7 +14,8 @@ class Settings(BaseSettings):
     )
 
     gigachat_credentials: str
-    gigachat_base_url: str = "https://gigachat.devices.sberbank.ru/api/v1"
+    gigachat_base_url: str = "https://api.giga.chat/v1"
+    gigachat_chat_model: str = "GigaChat-3-Ultra"
     gigachat_oauth_url: str = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
     gigachat_scope: str = "GIGACHAT_API_PERS"
     gigachat_verify_ssl: bool = True

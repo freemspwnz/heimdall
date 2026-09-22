@@ -9,7 +9,7 @@ v1 is a local CLI on the same host as the stack. No SSH, no Telegram, no unrestr
 ## Stack
 
 - Python 3.12+, asyncio, LangGraph, uv
-- GigaChat for chat; local `sentence-transformers` embeddings (`intfloat/multilingual-e5-base` by default)
+- GigaChat-3-Ultra for chat via `api.giga.chat`; local `sentence-transformers` embeddings (`intfloat/multilingual-e5-base` by default)
 - pgvector in a dedicated `heimdall` database on the existing Postgres
 - aiohttp clients for Loki and VictoriaMetrics
 - Docker Engine API via the local Unix socket
