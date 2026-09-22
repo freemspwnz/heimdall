@@ -238,7 +238,7 @@ async def test_gigachat_embeddings_200_returns_vectors() -> None:
     assert embed_url == f"{settings.gigachat_base_url}/embeddings"
     assert "/embeddings" in embed_url
     assert session.post.call_args_list[1].kwargs["json"] == {
-        "model": "GigaChat",
+        "model": "Embeddings",
         "input": ["a", "b"],
     }
     assert session.post.call_args_list[1].kwargs["headers"]["Authorization"] == (
@@ -246,7 +246,7 @@ async def test_gigachat_embeddings_200_returns_vectors() -> None:
     )
     await embedder.embed(["c"])
     assert session.post.call_count == 3
-    assert session.post.call_args_list[2].kwargs["json"]["model"] == "GigaChat"
+    assert session.post.call_args_list[2].kwargs["json"]["model"] == "Embeddings"
 
 
 @pytest.mark.asyncio

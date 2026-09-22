@@ -11,6 +11,7 @@ from heimdall.providers.protocols import ChatUnavailable, EmbeddingsUnavailable
 from heimdall.settings import Settings
 
 GIGACHAT_MODEL = "GigaChat"
+GIGACHAT_EMBEDDINGS_MODEL = "Embeddings"
 
 
 def _timeout() -> aiohttp.ClientTimeout:
@@ -252,6 +253,8 @@ class GigaChatEmbedder:
     async def embed(self, texts: list[str]) -> list[list[float]]:
         url = f"{self._base_url}/embeddings"
         parsed = await self._http.post_json(
-            url, {"model": GIGACHAT_MODEL, "input": texts}, EmbeddingsUnavailable
+            url,
+            {"model": GIGACHAT_EMBEDDINGS_MODEL, "input": texts},
+            EmbeddingsUnavailable,
         )
         return _parse_embeddings(parsed)
