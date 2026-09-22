@@ -10,7 +10,6 @@ from heimdall.models import ChatMessage, ChatResult, ToolCall, ToolSpec
 from heimdall.providers.protocols import ChatUnavailable, EmbeddingsUnavailable
 from heimdall.settings import Settings
 
-GIGACHAT_MODEL = "GigaChat"
 GIGACHAT_EMBEDDINGS_MODEL = "Embeddings"
 
 
@@ -25,15 +24,12 @@ def _parse_access_token(payload: object) -> str | None:
     return token if isinstance(token, str) and token else None
 
 
-def _openai_tools(tools: list[ToolSpec]) -> list[dict[str, object]]:
+def _gigachat_functions(tools: list[ToolSpec]) -> list[dict[str, object]]:
     return [
         {
-            "type": "function",
-            "function": {
-                "name": spec.name,
-                "description": spec.description,
-                "parameters": spec.parameters,
-            },
+            "name": spec.name,
+            "description": spec.description,
+            "parameters": spec.parameters,
         }
         for spec in tools
     ]
@@ -77,28 +73,19 @@ def _parse_arguments(raw: object) -> dict[str, object]:
     return {}
 
 
-def _parse_tool_calls(raw: object) -> list[ToolCall]:
-    if not isinstance(raw, list):
+def _parse_function_call(raw: object) -> list[ToolCall]:
+    if not isinstance(raw, dict):
         return []
-    calls: list[ToolCall] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        call_id = item.get("id")
-        function = item.get("function")
-        if not isinstance(call_id, str) or not isinstance(function, dict):
-            continue
-        name = function.get("name")
-        if not isinstance(name, str):
-            continue
-        calls.append(
-            ToolCall(
-                id=call_id,
-                name=name,
-                arguments=_parse_arguments(function.get("arguments")),
-            )
+    name = raw.get("name")
+    if not isinstance(name, str) or not name:
+        return []
+    return [
+        ToolCall(
+            id=f"fc-{uuid.uuid4()}",
+            name=name,
+            arguments=_parse_arguments(raw.get("arguments")),
         )
-    return calls
+    ]
 
 
 def _parse_chat_result(payload: object) -> ChatResult:
@@ -117,7 +104,7 @@ def _parse_chat_result(payload: object) -> ChatResult:
     content = content_raw if isinstance(content_raw, str) else None
     return ChatResult(
         content=content,
-        tool_calls=_parse_tool_calls(message.get("tool_calls")),
+        tool_calls=_parse_function_call(message.get("function_call")),
     )
 
 
@@ -226,6 +213,7 @@ class _GigaChatHttp:
 
 class GigaChatChatModel:
     def __init__(self, settings: Settings, session: aiohttp.ClientSession) -> None:
+        self._settings = settings
         self._http = _GigaChatHttp(settings, session)
         self._base_url = settings.gigachat_base_url.rstrip("/")
 
@@ -235,11 +223,12 @@ class GigaChatChatModel:
         tools: list[ToolSpec] | None = None,
     ) -> ChatResult:
         body: dict[str, object] = {
-            "model": GIGACHAT_MODEL,
+            "model": self._settings.gigachat_chat_model,
             "messages": [_message_payload(message) for message in messages],
         }
         if tools is not None:
-            body["tools"] = _openai_tools(tools)
+            body["functions"] = _gigachat_functions(tools)
+            body["function_call"] = "auto"
         url = f"{self._base_url}/chat/completions"
         parsed = await self._http.post_json(url, body, ChatUnavailable)
         return _parse_chat_result(parsed)

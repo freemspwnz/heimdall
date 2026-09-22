@@ -75,17 +75,13 @@ async def test_gigachat_chat_parses_tool_calls_after_oauth() -> None:
             "choices": [
                 {
                     "message": {
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": "call_abc",
-                                "type": "function",
-                                "function": {
-                                    "name": "docker_inspect",
-                                    "arguments": '{"target": "postgres"}',
-                                },
-                            }
-                        ],
+                        "content": "",
+                        "role": "assistant",
+                        "function_call": {
+                            "name": "docker_inspect",
+                            "arguments": {"name": "postgres"},
+                        },
+                        "finish_reason": "function_call",
                     }
                 }
             ]
@@ -93,7 +89,7 @@ async def test_gigachat_chat_parses_tool_calls_after_oauth() -> None:
     )
     chat_again = _response(
         200,
-        {"choices": [{"message": {"content": "ok", "tool_calls": []}}]},
+        {"choices": [{"message": {"content": "ok"}}]},
     )
     session = _session([oauth, chat, chat_again])
     model = GigaChatChatModel(settings, session)
@@ -108,9 +104,9 @@ async def test_gigachat_chat_parses_tool_calls_after_oauth() -> None:
         [ChatMessage(role="user", content="q")],
         tools=tools,
     )
-    assert result.tool_calls == [
-        ToolCall(id="call_abc", name="docker_inspect", arguments={"target": "postgres"})
-    ]
+    assert result.tool_calls[0].name == "docker_inspect"
+    assert result.tool_calls[0].arguments == {"name": "postgres"}
+    assert result.tool_calls[0].id
     oauth_url = session.post.call_args_list[0].args[0]
     chat_url = session.post.call_args_list[1].args[0]
     assert oauth_url == settings.gigachat_oauth_url
@@ -127,22 +123,24 @@ async def test_gigachat_chat_parses_tool_calls_after_oauth() -> None:
     chat_kwargs = session.post.call_args_list[1].kwargs
     assert chat_kwargs["headers"]["Authorization"] == "Bearer tok-1"
     payload = chat_kwargs["json"]
-    assert payload["model"] == "GigaChat"
-    assert payload["tools"] == [
+    assert payload["model"] == settings.gigachat_chat_model
+    assert "tools" not in payload
+    assert payload["function_call"] == "auto"
+    assert payload["functions"] == [
         {
-            "type": "function",
-            "function": {
-                "name": "docker_inspect",
-                "description": "inspect a container",
-                "parameters": {"type": "object", "properties": {}},
-            },
+            "name": "docker_inspect",
+            "description": "inspect a container",
+            "parameters": {"type": "object", "properties": {}},
         }
     ]
     await model.complete([ChatMessage(role="user", content="again")])
     assert session.post.call_count == 3
     third_url = session.post.call_args_list[2].args[0]
     assert third_url.endswith("/chat/completions")
-    assert session.post.call_args_list[2].kwargs["json"]["model"] == "GigaChat"
+    third_payload = session.post.call_args_list[2].kwargs["json"]
+    assert third_payload["model"] == settings.gigachat_chat_model
+    assert "functions" not in third_payload
+    assert "function_call" not in third_payload
 
 
 @pytest.mark.asyncio
