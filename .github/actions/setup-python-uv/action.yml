@@ -1,0 +1,25 @@
+name: Setup Python and uv
+description: Install Python, uv (with cache), and project dependencies including the dev group
+
+inputs:
+  python-version:
+    description: Python version
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install dependencies
+      shell: bash
+      run: uv sync --frozen --group dev

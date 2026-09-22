@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    uses: ./.github/workflows/ruff-lint.yml
+    with:
+      python-version: "3.12"
+
+  format:
+    uses: ./.github/workflows/ruff-format.yml
+    with:
+      python-version: "3.12"
+
+  mypy:
+    uses: ./.github/workflows/mypy.yml
+    with:
+      python-version: "3.12"
+
+  actionlint:
+    uses: ./.github/workflows/actionlint.yml
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/dependency-review.yml
+
+  pytest:
+    uses: ./.github/workflows/pytest.yml
+    with:
+      python-version: "3.12"
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # docker jobs updated in Task 5
+  docker-build:
+    name: Docker image (release tags only)
+    needs: [lint, format, mypy, actionlint, pytest]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      image-name: heimdall
+
+  github-release:
+    name: GitHub Release
+    needs: [docker-build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    uses: ./.github/workflows/gh-release.yml
