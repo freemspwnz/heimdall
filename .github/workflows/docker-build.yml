@@ -16,11 +16,7 @@ on:
         required: true
         type: boolean
 
-permissions:
-  contents: read
-  packages: write
-  attestations: write
-  id-token: write
+# Permissions come from the caller (verify: packages read; publish: write + attestations).
 
 jobs:
   docker-build:
