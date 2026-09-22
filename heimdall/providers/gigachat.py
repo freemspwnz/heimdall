@@ -39,7 +39,7 @@ def _message_payload(message: ChatMessage) -> dict[str, object]:
     if message.role == "tool":
         payload: dict[str, object] = {
             "role": "function",
-            "content": message.content,
+            "content": json.dumps({"result": message.content}, ensure_ascii=False),
         }
         if message.name is not None:
             payload["name"] = message.name

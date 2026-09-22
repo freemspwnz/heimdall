@@ -184,7 +184,7 @@ async def test_gigachat_serializes_investigate_history_as_native_functions() -> 
     assert wire[2] == {
         "role": "function",
         "name": "docker_inspect",
-        "content": "ok payload",
+        "content": json.dumps({"result": "ok payload"}, ensure_ascii=False),
     }
 
 
