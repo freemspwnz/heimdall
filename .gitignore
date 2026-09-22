@@ -22,6 +22,8 @@ build/
 .coverage
 .coverage.*
 htmlcov/
+coverage.xml
+junit.xml
 .tox/
 
 # Runtime / agent state
