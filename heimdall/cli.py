@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import asyncio
 import sys
@@ -16,25 +14,22 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
 
-from heimdall.channels.base import UserChannel
-from heimdall.channels.cli import CliChannel
+from heimdall.channels import CliChannel, UserChannel
 from heimdall.graph import CompiledGraph, GraphState, build_graph
 from heimdall.graph.prompts import EMPTY_REPORT
 from heimdall.models import Action
-from heimdall.providers.gigachat import GigaChatChatModel, GigaChatEmbedder
-from heimdall.providers.local import LocalEmbedder
-from heimdall.providers.protocols import (
+from heimdall.providers import (
     ChatModel,
     ChatUnavailable,
     Embedder,
     EmbeddingsUnavailable,
+    GigaChatChatModel,
+    GigaChatEmbedder,
+    LocalEmbedder,
 )
-from heimdall.rag.ingest import ingest_knowledge
-from heimdall.rag.store import PgVectorStore, VectorStore
+from heimdall.rag import PgVectorStore, VectorStore, ingest_knowledge
 from heimdall.settings import Settings
-from heimdall.tools.docker import DockerClient
-from heimdall.tools.loki import LokiClient
-from heimdall.tools.victoriametrics import VictoriaMetricsClient
+from heimdall.tools import DockerClient, LokiClient, VictoriaMetricsClient
 
 CHAT_UNAVAILABLE = "модель недоступна"
 EMBEDDINGS_UNAVAILABLE = "эмбеддинги недоступны"

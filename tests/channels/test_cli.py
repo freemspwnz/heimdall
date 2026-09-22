@@ -1,6 +1,6 @@
 import io
 
-from heimdall.channels.cli import CliChannel
+from heimdall.channels import CliChannel
 from heimdall.models import Action
 
 ACTION = Action(

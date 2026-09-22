@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from heimdall.constants import MAX_OBSERVATION_LINES
-from heimdall.tools.loki import LokiClient
+from heimdall.tools import LokiClient
 
 
 def _response(status: int, body: dict[str, object] | str) -> MagicMock:

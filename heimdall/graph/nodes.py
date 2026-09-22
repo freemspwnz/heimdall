@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 from dataclasses import asdict, dataclass
 
@@ -34,11 +32,9 @@ from heimdall.models import (
     ToolCall,
     ToolSpec,
 )
-from heimdall.providers.protocols import ChatModel, Embedder, EmbeddingsUnavailable
-from heimdall.rag.store import VectorStore
-from heimdall.tools.docker import DockerClient
-from heimdall.tools.loki import LokiClient
-from heimdall.tools.victoriametrics import VictoriaMetricsClient
+from heimdall.providers import ChatModel, Embedder, EmbeddingsUnavailable
+from heimdall.rag import VectorStore
+from heimdall.tools import DockerClient, LokiClient, VictoriaMetricsClient
 
 LOKI_QUERY = "loki_query"
 VM_QUERY = "vm_query"

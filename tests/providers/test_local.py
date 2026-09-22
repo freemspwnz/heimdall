@@ -1,10 +1,7 @@
-from __future__ import annotations
-
 from typing import Any
 
 import pytest
-from heimdall.providers.local import LocalEmbedder
-from heimdall.providers.protocols import EmbeddingsUnavailable
+from heimdall.providers import EmbeddingsUnavailable, LocalEmbedder
 
 
 class _FakeModel:

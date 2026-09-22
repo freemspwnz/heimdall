@@ -3,9 +3,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from heimdall.models import ChatMessage, ToolCall, ToolSpec
-from heimdall.providers.fake import FakeChatModel, FakeEmbedder, ScriptedTurn
-from heimdall.providers.gigachat import GigaChatChatModel, GigaChatEmbedder
-from heimdall.providers.protocols import ChatUnavailable, EmbeddingsUnavailable
+from heimdall.providers import (
+    ChatUnavailable,
+    EmbeddingsUnavailable,
+    FakeChatModel,
+    FakeEmbedder,
+    GigaChatChatModel,
+    GigaChatEmbedder,
+    ScriptedTurn,
+)
 from heimdall.settings import Settings
 
 

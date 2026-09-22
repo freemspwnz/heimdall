@@ -16,13 +16,15 @@ from heimdall.models import (
     ToolCall,
     ToolSpec,
 )
-from heimdall.providers.fake import FakeChatModel, FakeEmbedder, ScriptedTurn
-from heimdall.providers.protocols import (
+from heimdall.providers import (
     ChatUnavailable,
     Embedder,
     EmbeddingsUnavailable,
+    FakeChatModel,
+    FakeEmbedder,
+    ScriptedTurn,
 )
-from heimdall.rag.store import InMemoryVectorStore
+from heimdall.rag import InMemoryVectorStore
 from langgraph.checkpoint.memory import MemorySaver
 
 POSTGRES_QUESTION = "Что с postgres?"  # noqa: RUF001

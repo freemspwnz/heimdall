@@ -3,10 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from heimdall.models import Chunk
-from heimdall.providers.fake import KEYWORDS, FakeEmbedder
-from heimdall.providers.protocols import EmbeddingsUnavailable
-from heimdall.rag.ingest import ingest_knowledge
-from heimdall.rag.store import InMemoryVectorStore, PgVectorStore
+from heimdall.providers import KEYWORDS, EmbeddingsUnavailable, FakeEmbedder
+from heimdall.rag import InMemoryVectorStore, PgVectorStore, ingest_knowledge
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[2] / "docs" / "knowledge"
 TUNNEL_QUERY = "Почему отвалился туннель"

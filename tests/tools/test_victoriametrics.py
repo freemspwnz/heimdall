@@ -2,7 +2,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from heimdall.tools.victoriametrics import VictoriaMetricsClient
+from heimdall.tools import VictoriaMetricsClient
 
 
 def _response(status: int, body: dict[str, object] | str) -> MagicMock:

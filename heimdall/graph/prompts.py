@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from heimdall.constants import NEVER_RESTART, RESTART_ALLOWLIST
 
 _ROLE = "Ты Heimdall, DevOps-агент домашней инфраструктуры на одном Docker-хосте."

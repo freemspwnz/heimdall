@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
@@ -15,11 +13,9 @@ from heimdall.constants import (
 from heimdall.graph import nodes
 from heimdall.graph.nodes import Deps
 from heimdall.graph.state import GraphState, StateUpdate
-from heimdall.providers.protocols import ChatModel, Embedder
-from heimdall.rag.store import VectorStore
-from heimdall.tools.docker import DockerClient
-from heimdall.tools.loki import LokiClient
-from heimdall.tools.victoriametrics import VictoriaMetricsClient
+from heimdall.providers import ChatModel, Embedder
+from heimdall.rag import VectorStore
+from heimdall.tools import DockerClient, LokiClient, VictoriaMetricsClient
 
 DepsNode = Callable[[GraphState, Deps], Awaitable[StateUpdate]]
 

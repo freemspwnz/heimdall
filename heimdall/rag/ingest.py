@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from heimdall.models import Chunk
-from heimdall.providers.protocols import Embedder
+from heimdall.providers import Embedder
 from heimdall.rag.chunker import chunk_markdown
 from heimdall.rag.store import VectorStore
 

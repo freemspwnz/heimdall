@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import math
 from typing import Protocol
 
@@ -7,7 +5,7 @@ import asyncpg
 
 from heimdall.constants import RETRIEVE_TOP_K
 from heimdall.models import Chunk
-from heimdall.providers.protocols import Embedder
+from heimdall.providers import Embedder
 
 
 class VectorStore(Protocol):

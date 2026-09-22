@@ -1,4 +1,4 @@
-from heimdall.rag.chunker import chunk_markdown
+from heimdall.rag import chunk_markdown
 
 
 def test_chunk_markdown_splits_on_h2_headings() -> None:
