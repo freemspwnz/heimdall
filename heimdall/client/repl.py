@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from typing import Literal
+from urllib.parse import urljoin
 
 import aiohttp
 
@@ -13,6 +15,8 @@ AGENT_UNAVAILABLE = "агент не запущен, запустите heimdall
 ASK_FAILED = "не удалось выполнить запрос"
 REPL_PROMPT = "heimdall> "
 REPL_EXIT_WORDS = frozenset({"exit", "quit"})
+
+_PROBE_TIMEOUT = aiohttp.ClientTimeout(total=5, sock_connect=5)
 
 InputFn = Callable[[], str | None]
 
@@ -49,6 +53,18 @@ def _decision_from_answer(answer: str | None) -> Literal["yes", "no"]:
     return "no"
 
 
+async def _read_stdin(fn: InputFn) -> str | None:
+    # Keep the event loop alive: sync input() otherwise freezes aiohttp
+    # (lab: second ask → ClientConnectorError while serve is up).
+    return await asyncio.to_thread(fn)
+
+
+async def _probe_agent(http: aiohttp.ClientSession, base_url: str) -> None:
+    url = urljoin(base_url.rstrip("/") + "/", "health")
+    async with http.get(url, timeout=_PROBE_TIMEOUT) as resp:
+        resp.raise_for_status()
+
+
 async def run_repl(
     base_url: str,
     input_fn: InputFn = _default_input,
@@ -58,9 +74,22 @@ async def run_repl(
     read_confirm = confirm_fn if confirm_fn is not None else _default_confirm
     try:
         async with make_client_session() as http:
+            try:
+                await _probe_agent(http, base_url)
+            except (
+                TimeoutError,
+                aiohttp.ClientConnectorError,
+                aiohttp.ClientOSError,
+                aiohttp.ServerDisconnectedError,
+                aiohttp.ClientResponseError,
+                OSError,
+            ):
+                output_fn(AGENT_UNAVAILABLE)
+                return 1
+
             client = AgentClient(base_url, http=http)
             while True:
-                raw = input_fn()
+                raw = await _read_stdin(input_fn)
                 if raw is None:
                     return 0
                 question = raw.strip()
@@ -77,7 +106,9 @@ async def run_repl(
                             if event.action is not None:
                                 for line in _format_action(event.action):
                                     output_fn(line)
-                            decision = _decision_from_answer(read_confirm())
+                            decision = _decision_from_answer(
+                                await _read_stdin(read_confirm)
+                            )
                             if event.run_id is None:
                                 output_fn("missing run_id for hitl")
                                 continue
@@ -94,10 +125,7 @@ async def run_repl(
                     aiohttp.ClientResponseError,
                     OSError,
                 ) as exc:
-                    if isinstance(exc, aiohttp.ClientConnectorError):
-                        output_fn(AGENT_UNAVAILABLE)
-                        return 1
-                    output_fn(f"{ASK_FAILED}: {exc}")
+                    output_fn(f"{ASK_FAILED}: {type(exc).__name__}: {exc}")
                     continue
     except aiohttp.ClientConnectorError:
         output_fn(AGENT_UNAVAILABLE)

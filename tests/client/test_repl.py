@@ -2,13 +2,15 @@ import asyncio
 import itertools
 import json
 import socket
+import threading
+import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any
 
 import pytest
 import uvicorn
 from heimdall.api.app import create_app
-from heimdall.client.repl import AGENT_UNAVAILABLE, run_repl
+from heimdall.client.repl import AGENT_UNAVAILABLE, ASK_FAILED, run_repl
 from heimdall.client.session import AgentClient, make_client_session
 from heimdall.graph import build_graph
 from heimdall.models import Observation, ToolCall
@@ -241,3 +243,102 @@ async def test_repl_unavailable_agent_returns_1() -> None:
     )
     assert code == 1
     assert AGENT_UNAVAILABLE in "\n".join(outputs)
+
+
+@pytest.mark.asyncio
+async def test_repl_confirm_does_not_block_event_loop(
+    serve_app: Callable[[Any], AsyncIterator[str]],
+) -> None:
+    """HITL confirm must not freeze asyncio (lab: second ask → ClientConnectorError)."""
+    docker = FakeDocker()
+    app = create_app(AskRunner(graph_with_restart(docker)))
+    answers: Iterator[str] = iter([POSTGRES_QUESTION, "exit"])
+    confirm_entered = threading.Event()
+    confirm_done = threading.Event()
+    progress_during_confirm: list[bool] = []
+
+    def confirm_fn() -> str:
+        confirm_entered.set()
+        time.sleep(0.25)
+        confirm_done.set()
+        return "n"
+
+    async def watchdog() -> None:
+        await asyncio.to_thread(confirm_entered.wait, 5.0)
+        await asyncio.sleep(0.05)
+        progress_during_confirm.append(not confirm_done.is_set())
+
+    async for base_url in serve_app(app):
+        watch = asyncio.create_task(watchdog())
+        code = await run_repl(
+            base_url,
+            input_fn=lambda: next(answers),
+            confirm_fn=confirm_fn,
+            output_fn=lambda _t: None,
+        )
+        await watch
+        assert code == 0
+        assert progress_during_confirm == [True]
+        return
+
+
+@pytest.mark.asyncio
+async def test_repl_hitl_then_second_ask(
+    serve_app: Callable[[Any], AsyncIterator[str]],
+) -> None:
+    docker = FakeDocker()
+    app = create_app(AskRunner(graph_with_restart(docker)))
+    answers: Iterator[str] = iter([POSTGRES_QUESTION, "ping", "exit"])
+    confirms: Iterator[str] = iter(["n", "n"])
+    outputs: list[str] = []
+
+    async for base_url in serve_app(app):
+        code = await run_repl(
+            base_url,
+            input_fn=lambda: next(answers),
+            confirm_fn=lambda: next(confirms),
+            output_fn=outputs.append,
+        )
+        assert code == 0
+        assert docker.restart_calls == []
+        # two full runs should each emit a final report line
+        assert sum(1 for line in outputs if "Стало: healthy." in line) == 0
+        assert any("postgres" in line.lower() for line in outputs)
+        return
+
+
+@pytest.mark.asyncio
+async def test_repl_connector_error_after_start_continues(
+    serve_app: Callable[[Any], AsyncIterator[str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(AskRunner(graph_without_proposal()))
+    outputs: list[str] = []
+    answers: Iterator[str] = iter(["ping", "pong", "exit"])
+    call_count = {"n": 0}
+
+    from heimdall.client import session as session_mod
+
+    original_ask = session_mod.AgentClient.ask
+
+    async def flaky_ask(self: AgentClient, question: str) -> AsyncIterator[Any]:
+        call_count["n"] += 1
+        if call_count["n"] >= 2:
+            self._base_url = "http://127.0.0.1:1/"
+        async for event in original_ask(self, question):
+            yield event
+
+    monkeypatch.setattr(session_mod.AgentClient, "ask", flaky_ask)
+
+    async for base_url in serve_app(app):
+        code = await run_repl(
+            base_url,
+            input_fn=lambda: next(answers),
+            output_fn=outputs.append,
+        )
+        assert code == 0
+        joined = "\n".join(outputs)
+        assert AGENT_UNAVAILABLE not in joined
+        assert ASK_FAILED in joined
+        assert "ClientConnectorError" in joined
+        return
