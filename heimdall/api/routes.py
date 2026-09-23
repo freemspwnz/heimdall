@@ -41,6 +41,7 @@ def _sse(event: RunEvent) -> bytes:
 def _runner(request: Request) -> AskRunner:
     return cast(AskRunner, request.app.state.runner)
 
+
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
