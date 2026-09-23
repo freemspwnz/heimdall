@@ -16,6 +16,10 @@
 - CLI HITL confirm uses `Выполнить? [y/N]:` without a second `heimdall>` prompt
 - Thin client reads `HEIMDALL_URL` without requiring GigaChat/Postgres credentials
 
+### Changed
+
+- Compose mounts Hugging Face cache as `./data/hf` bind instead of a named volume
+
 ## [0.2.0]
 
 ### Added

@@ -16,7 +16,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data/heimdall-checkpoints.sqlite:/data/heimdall-checkpoints.sqlite
       - ./docs/knowledge:/app/docs/knowledge:ro
-      - hf-cache:/data/hf
+      - ./data/hf:/data/hf
     networks:
       - lab
     # Optional host access to the control API (lab-internal by default):
@@ -28,6 +28,3 @@ networks:
   lab:
     external: true
     name: ${HEIMDALL_LAB_NETWORK:-lab}
-
-volumes:
-  hf-cache:

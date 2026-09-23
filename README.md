@@ -57,7 +57,7 @@ Run Heimdall as a container attached to your homelab Docker network instead of i
 
 ```bash
 cp .env.example .env
-mkdir -p data && touch data/heimdall-checkpoints.sqlite
+mkdir -p data/hf && touch data/heimdall-checkpoints.sqlite
 ```
 
 Edit `.env` for Compose: Loki, VictoriaMetrics, and Postgres URLs must use **Docker DNS names** of services on the lab network (e.g. `http://loki:3100`, `postgresql://…@postgres:5432/heimdall`). `127.0.0.1` works only for host `uv run`, not inside the container. See commented examples in `.env.example`.
@@ -72,8 +72,7 @@ The compose file joins an **external** network (`HEIMDALL_LAB_NETWORK`, default 
 
 **Image target:** `HEIMDALL_IMAGE_TARGET=embeddings` (default) builds/runs the image with local `sentence-transformers`. Set `HEIMDALL_IMAGE_TARGET=slim` if you use `EMBEDDER=gigachat` and do not need on-box embeddings.
 
-**HF cache:** A named volume (`hf-cache` → `/data/hf`) persists Hugging Face model downloads across container rebuilds.
-
+**HF cache:** `./data/hf` is bind-mounted to `/data/hf` (`HF_HOME`) so Hugging Face model downloads persist across container rebuilds. Create the directory before the first run (`mkdir -p data/hf`). The whole `data/` tree is gitignored.
 ```bash
 docker compose up -d
 docker compose exec -it heimdall heimdall ingest   # first-time / re-index
