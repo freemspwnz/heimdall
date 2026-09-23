@@ -533,8 +533,59 @@ def test_docker_connector_requires_unix_socket() -> None:
         _docker_connector("tcp://127.0.0.1:2375")
 
 
-def test_main_without_a_command_fails() -> None:
-    assert main([], deps=make_deps(chat=postgres_chat())) != 0
+def _short_report_chat(*, rounds: int = 1) -> FakeChatModel:
+    turns: list[ScriptedTurn] = []
+    for _ in range(rounds):
+        turns.extend(
+            [
+                ScriptedTurn(content="Факты собраны."),
+                diagnose_turn(),
+                propose_turn(None),
+            ]
+        )
+    return FakeChatModel(turns)
+
+
+def test_bare_heimdall_runs_repl_until_exit(monkeypatch: pytest.MonkeyPatch) -> None:
+    lines = iter(["Что с postgres?", "exit"])  # noqa: RUF001
+    monkeypatch.setattr("heimdall.cli._read_repl_line", lambda: next(lines, "exit"))
+    channel = FakeChannel()
+    deps = make_deps(chat=_short_report_chat(rounds=1), channel=channel)
+
+    code = main([], deps=deps)
+
+    assert code == 0
+    assert channel.output
+
+
+def test_repl_handles_multiple_questions(monkeypatch: pytest.MonkeyPatch) -> None:
+    lines = iter(["вопрос один", "вопрос два", "quit"])
+    monkeypatch.setattr("heimdall.cli._read_repl_line", lambda: next(lines, "quit"))
+    channel = FakeChannel()
+    deps = make_deps(chat=_short_report_chat(rounds=2), channel=channel)
+
+    code = main([], deps=deps)
+
+    assert code == 0
+    assert channel.messages  # at least one report emitted
+    assert len(channel.messages) >= 2
+
+
+def test_repl_eof_exits_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("heimdall.cli._read_repl_line", lambda: None)
+    deps = make_deps(chat=_short_report_chat(rounds=1))
+
+    assert main([], deps=deps) == 0
+
+
+def test_repl_skips_blank_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+    lines = iter(["", "  ", "exit"])
+    monkeypatch.setattr("heimdall.cli._read_repl_line", lambda: next(lines, "exit"))
+    channel = FakeChannel()
+    deps = make_deps(chat=_short_report_chat(rounds=1), channel=channel)
+
+    assert main([], deps=deps) == 0
+    assert channel.messages == []
 
 
 def test_main_with_an_unknown_command_fails() -> None:

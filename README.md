@@ -40,11 +40,12 @@ If you previously indexed with another embedder (e.g. GigaChat), drop the old ta
 DROP TABLE IF EXISTS chunks;
 ```
 
-Index the knowledge base, then ask:
+Index the knowledge base, then ask (one-shot or interactive REPL):
 
 ```bash
 uv run heimdall ingest
 uv run heimdall ask "Что с postgres?"
+uv run heimdall   # REPL: several questions without reloading the embedder
 ```
 
 ## Docker / Compose (guest)
@@ -116,7 +117,9 @@ When cutting a release tag (e.g. `v0.2.0`), move the `[Unreleased]` section in `
 
 | Command | Purpose |
 | --- | --- |
+| `uv run heimdall` | Interactive REPL (model loads once; `exit` / `quit` / Ctrl-D to leave) |
+| `uv run heimdall ask "..."` | One-shot diagnosis for a single question |
 | `uv run heimdall ingest` | Chunk and embed `docs/knowledge` into pgvector |
-| `uv run heimdall ask "..."` | Run the diagnostic graph for one question |
-| `docker compose run --rm -it heimdall ingest` | Same as ingest, guest container |
+| `docker compose run --rm -it heimdall` | Same as REPL, guest container |
 | `docker compose run --rm -it heimdall ask "..."` | Same as ask, guest container |
+| `docker compose run --rm -it heimdall ingest` | Same as ingest, guest container |

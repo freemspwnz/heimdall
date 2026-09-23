@@ -47,6 +47,8 @@ RESTART_ALREADY_RAN = "Рестарт уже выполнен"
 RESTART_OK = "успешно"
 RESTART_FAILED = "с ошибкой"  # noqa: RUF001
 _UNIX_PREFIX = "unix://"
+REPL_PROMPT = "heimdall> "
+REPL_EXIT_WORDS = frozenset({"exit", "quit"})
 
 
 @dataclass(frozen=True)
@@ -70,7 +72,9 @@ def main(argv: list[str] | None = None, deps: AppDeps | None = None) -> int:
         return exc.code if isinstance(exc.code, int) else 1
     if args.command == "ask":
         return asyncio.run(_ask(args.question, deps))
-    return asyncio.run(_ingest(deps))
+    if args.command == "ingest":
+        return asyncio.run(_ingest(deps))
+    return asyncio.run(_repl(deps))
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -78,11 +82,18 @@ def _parser() -> argparse.ArgumentParser:
         prog="heimdall",
         description="DevOps agent for a homelab",
     )
-    commands = parser.add_subparsers(dest="command", required=True)
+    commands = parser.add_subparsers(dest="command", required=False)
     ask = commands.add_parser("ask", help="diagnose a problem in the homelab")
     ask.add_argument("question", help="question in free form")
     commands.add_parser("ingest", help="index the knowledge base")
     return parser
+
+
+def _read_repl_line() -> str | None:
+    try:
+        return input(REPL_PROMPT)
+    except EOFError:
+        return None
 
 
 async def _ask(question: str, deps: AppDeps | None) -> int:
@@ -98,6 +109,34 @@ async def _ingest(deps: AppDeps | None) -> int:
     if deps is not None:
         return await _run_ingest(deps)
     return await _in_production(_run_ingest, _ingest_production_deps)
+
+
+async def _repl(deps: AppDeps | None) -> int:
+    if deps is not None:
+        return await _run_repl(deps)
+    return await _in_production(_run_repl, _production_deps)
+
+
+async def _run_repl(deps: AppDeps) -> int:
+    graph = build_graph(
+        retriever=deps.store,
+        embedder=deps.embedder,
+        chat=deps.chat,
+        docker=deps.docker,
+        loki=deps.loki,
+        vm=deps.vm,
+        checkpointer=deps.checkpointer,
+    )
+    while True:
+        raw = _read_repl_line()
+        if raw is None:
+            return 0
+        question = raw.strip()
+        if not question:
+            continue
+        if question.lower() in REPL_EXIT_WORDS:
+            return 0
+        await _run_ask_with_graph(question, deps, graph)
 
 
 async def _in_production(
@@ -122,6 +161,14 @@ async def _run_ask(question: str, deps: AppDeps) -> int:
         vm=deps.vm,
         checkpointer=deps.checkpointer,
     )
+    return await _run_ask_with_graph(question, deps, graph)
+
+
+async def _run_ask_with_graph(
+    question: str,
+    deps: AppDeps,
+    graph: CompiledGraph,
+) -> int:
     thread = {"thread_id": str(uuid4())}
     try:
         state = dict(
