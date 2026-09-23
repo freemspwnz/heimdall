@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from typing import Any, Literal
 from uuid import uuid4
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
 from heimdall.graph import CompiledGraph, GraphState
@@ -28,10 +29,10 @@ class AskRunner:
 
         await self._lock.acquire()
         run_id = str(uuid4())
-        config: dict[str, Any] = {"configurable": {"thread_id": run_id}}
+        config: RunnableConfig = {"configurable": {"thread_id": run_id}}
         try:
             try:
-                payload: object = _initial_state(question)
+                payload: GraphState | Command[Any] = _initial_state(question)
                 while True:
                     async for update in self._graph.astream(
                         payload,
@@ -115,7 +116,7 @@ class AskRunner:
         finally:
             self._waiting.pop(run_id, None)
 
-    async def _read_state(self, config: dict[str, Any]) -> dict[str, Any]:
+    async def _read_state(self, config: RunnableConfig) -> dict[str, Any]:
         snapshot = await self._graph.aget_state(config)
         values = snapshot.values
         state = dict(values) if isinstance(values, dict) else {}

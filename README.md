@@ -40,12 +40,13 @@ If you previously indexed with another embedder (e.g. GigaChat), drop the old ta
 DROP TABLE IF EXISTS chunks;
 ```
 
-Index the knowledge base, then ask (one-shot or interactive REPL):
+Index the knowledge base, start the runtime, then open a client REPL:
 
 ```bash
 uv run heimdall ingest
-uv run heimdall ask "Что с postgres?"
-uv run heimdall   # REPL: several questions without reloading the embedder
+uv run heimdall serve   # long-running runtime (loads model once)
+# other terminal:
+uv run heimdall         # thin client REPL → HEIMDALL_URL
 ```
 
 ## Docker / Compose (guest)
@@ -74,8 +75,9 @@ The compose file joins an **external** network (`HEIMDALL_LAB_NETWORK`, default 
 **HF cache:** A named volume (`hf-cache` → `/data/hf`) persists Hugging Face model downloads across container rebuilds.
 
 ```bash
-docker compose run --rm -it heimdall ingest
-docker compose run --rm -it heimdall ask "Что с postgres?"
+docker compose up -d
+docker compose exec -it heimdall heimdall ingest   # first-time / re-index
+docker compose exec -it heimdall heimdall            # client REPL inside the container
 ```
 
 **Pull from GHCR** (images build and publish only on `v*` tags — not on every PR/push):
@@ -91,13 +93,13 @@ Tag format: `vX.Y.Z-slim` and `vX.Y.Z-embeddings`, plus floating `:slim`, `:embe
 
 ### Example questions
 
-```bash
-uv run heimdall ask "Что с postgres?"
-uv run heimdall ask "Почему не открывается сервис за Traefik?"
-uv run heimdall ask "Почему отвалился туннель?"
-```
+In the client REPL (`heimdall>`):
 
-Same questions work with `docker compose run --rm -it heimdall ask "..."`.
+```text
+Что с postgres?
+Почему не открывается сервис за Traefik?
+Почему отвалился туннель?
+```
 
 ### HITL
 
@@ -119,9 +121,8 @@ When cutting a release tag (e.g. `v0.2.0`), move the `[Unreleased]` section in `
 
 | Command | Purpose |
 | --- | --- |
-| `uv run heimdall` | Interactive REPL (model loads once; `exit` / `quit` / Ctrl-D to leave) |
-| `uv run heimdall ask "..."` | One-shot diagnosis for a single question |
-| `uv run heimdall ingest` | Chunk and embed `docs/knowledge` into pgvector |
-| `docker compose run --rm -it heimdall` | Same as REPL, guest container |
-| `docker compose run --rm -it heimdall ask "..."` | Same as ask, guest container |
-| `docker compose run --rm -it heimdall ingest` | Same as ingest, guest container |
+| `heimdall serve` | Long-running agent runtime |
+| `heimdall` / `heimdall cli` | Client REPL session to serve |
+| `heimdall ingest` | Index knowledge |
+| `docker compose up -d` | Start serve |
+| `docker compose exec -it heimdall heimdall` | Client inside the container |

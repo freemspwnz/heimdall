@@ -10,6 +10,8 @@ services:
       CHECKPOINT_PATH: /data/heimdall-checkpoints.sqlite
       HF_HOME: /data/hf
       KNOWLEDGE_DIR: /app/docs/knowledge
+      HEIMDALL_LISTEN: 0.0.0.0:8080
+      HEIMDALL_URL: http://127.0.0.1:8080
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data/heimdall-checkpoints.sqlite:/data/heimdall-checkpoints.sqlite
@@ -17,9 +19,10 @@ services:
       - hf-cache:/data/hf
     networks:
       - lab
-    stdin_open: true
-    tty: true
-    entrypoint: ["heimdall"]
+    # Optional host access to the control API (lab-internal by default):
+    # ports:
+    #   - "127.0.0.1:8080:8080"
+    entrypoint: ["heimdall", "serve"]
 
 networks:
   lab:
