@@ -9,7 +9,8 @@
 ### Added
 
 - `heimdall serve` FastAPI control API (SSE ask stream + HITL resume)
-- Compose service runs `heimdall serve` in the background; use `docker compose exec -it heimdall heimdall` for the client REPL
+- Compose service runs `heimdall serve` in the background; use `docker compose exec -it heimdall cli` for the client REPL
+- Console script `cli` → same entry as `heimdall` (for `docker compose exec -it heimdall cli`)
 
 ### Fixed
 

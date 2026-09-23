@@ -76,7 +76,7 @@ The compose file joins an **external** network (`HEIMDALL_LAB_NETWORK`, default 
 ```bash
 docker compose up -d
 docker compose exec -it heimdall heimdall ingest   # first-time / re-index
-docker compose exec -it heimdall heimdall            # client REPL inside the container
+docker compose exec -it heimdall cli                 # client REPL inside the container
 ```
 
 **Pull from GHCR** (images build and publish only on `v*` tags — not on every PR/push):
@@ -121,7 +121,7 @@ When cutting a release tag (e.g. `v0.2.0`), move the `[Unreleased]` section in `
 | Command | Purpose |
 | --- | --- |
 | `heimdall serve` | Long-running agent runtime |
-| `heimdall` / `heimdall cli` | Client REPL session to serve |
+| `heimdall` / `heimdall cli` | Client REPL on the host (`uv run heimdall`) |
+| `cli` | Same REPL inside the container (`docker compose exec -it heimdall cli`) |
 | `heimdall ingest` | Index knowledge |
 | `docker compose up -d` | Start serve |
-| `docker compose exec -it heimdall heimdall` | Client inside the container |
