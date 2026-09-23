@@ -76,7 +76,7 @@ docker compose run --rm -it heimdall ingest
 docker compose run --rm -it heimdall ask "Что с postgres?"
 ```
 
-**Pull from GHCR** (published when you push a `v*` tag):
+**Pull from GHCR** (images build and publish only on `v*` tags — not on every PR/push):
 
 ```bash
 docker pull ghcr.io/freemspwnz/heimdall:v0.2.0-embeddings
@@ -103,7 +103,7 @@ If Heimdall proposes a restart, it prints `docker restart <name>` with reason an
 
 ## Tests and quality gate
 
-Unit tests use fakes — **no live GigaChat, Loki, Docker daemon, or Postgres** in CI/local pytest.
+Unit tests use fakes — **no live GigaChat, Loki, Docker daemon, or Postgres** in CI/local pytest. PR and `main` runs lint/mypy/pytest only; Docker images build on version tags.
 
 ```bash
 uv run pytest && uv run mypy heimdall && uv run ruff check heimdall tests

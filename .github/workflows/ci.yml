@@ -48,32 +48,6 @@ jobs:
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  docker-verify-slim:
-    name: Docker build slim (no push)
-    needs: [lint, format, mypy, actionlint, pytest]
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    permissions:
-      contents: read
-      packages: read
-    uses: ./.github/workflows/docker-build.yml
-    with:
-      image-name: heimdall
-      target: slim
-      push: false
-
-  docker-verify-embeddings:
-    name: Docker build embeddings (no push)
-    needs: [lint, format, mypy, actionlint, pytest]
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    permissions:
-      contents: read
-      packages: read
-    uses: ./.github/workflows/docker-build.yml
-    with:
-      image-name: heimdall
-      target: embeddings
-      push: false
-
   docker-publish-slim:
     name: Docker publish slim
     needs: [lint, format, mypy, actionlint, pytest]
