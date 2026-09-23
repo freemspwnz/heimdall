@@ -65,6 +65,8 @@ The compose file joins an **external** network (`HEIMDALL_LAB_NETWORK`, default 
 
 **Checkpoint file:** `./data/heimdall-checkpoints.sqlite` is bind-mounted into the container. Create the empty file with `touch` before the first run — otherwise Docker may create a directory at that path.
 
+**Why SQLite for checkpoints (not Postgres/Redis):** LangGraph needs a checkpointer so HITL (`interrupt` → confirm restart → resume) survives across the pause. Postgres already holds RAG (pgvector); Redis may exist in the lab — neither is used for checkpoints on purpose. The agent can restart containers it diagnoses (including `postgres` or `redis`). If checkpoints lived in that same service, confirming the restart could drop connections mid-`execute`/`verify` and block resume while the store is down. A local SQLite file is independent of containers the agent may restart, needs no extra service, and matches a single-process CLI.
+
 **Docker socket:** Compose mounts `/var/run/docker.sock`. The container can call the full Docker Engine API on the host (list/restart containers, etc.). Treat this like giving the agent root-level control over your Docker daemon; use only on trusted homelab hosts.
 
 **Image target:** `HEIMDALL_IMAGE_TARGET=embeddings` (default) builds/runs the image with local `sentence-transformers`. Set `HEIMDALL_IMAGE_TARGET=slim` if you use `EMBEDDER=gigachat` and do not need on-box embeddings.
