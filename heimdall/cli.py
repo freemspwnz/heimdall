@@ -17,8 +17,6 @@ from langgraph.types import Command
 
 from heimdall.channels import CliChannel, UserChannel
 from heimdall.graph import CompiledGraph, GraphState, build_graph
-from heimdall.graph.prompts import EMPTY_REPORT
-from heimdall.models import Action
 from heimdall.providers import (
     ChatModel,
     ChatUnavailable,
@@ -29,8 +27,19 @@ from heimdall.providers import (
     LocalEmbedder,
 )
 from heimdall.rag import PgVectorStore, VectorStore, ingest_knowledge
+from heimdall.runtime.state import (
+    is_interrupted,
+    pending_action,
+    report,
+    text,
+)
 from heimdall.settings import Settings
 from heimdall.tools import DockerClient, LokiClient, VictoriaMetricsClient
+
+_is_interrupted = is_interrupted
+_pending_action = pending_action
+_report = report
+_text = text
 
 CHAT_UNAVAILABLE = "модель недоступна"
 EMBEDDINGS_UNAVAILABLE = "эмбеддинги недоступны"
@@ -258,41 +267,6 @@ def _initial_state(question: str) -> GraphState:
         execution_result=None,
         report=None,
     )
-
-
-def _is_interrupted(state: dict[str, Any]) -> bool:
-    return bool(state.get("__interrupt__"))
-
-
-def _pending_action(state: dict[str, Any]) -> Action | None:
-    interrupts = state.get("__interrupt__")
-    if not isinstance(interrupts, list | tuple) or not interrupts:
-        return None
-    value = getattr(interrupts[0], "value", None)
-    if not isinstance(value, dict):
-        return None
-    proposed = value.get("proposed_action")
-    if not isinstance(proposed, dict):
-        return None
-    return Action(
-        tool=_text(proposed.get("tool")) or "restart",
-        target=_text(proposed.get("target")),
-        reason=_text(proposed.get("reason")),
-        risk=_text(proposed.get("risk")),
-    )
-
-
-def _report(state: dict[str, Any]) -> str:
-    report = state.get("report")
-    if isinstance(report, str) and report:
-        return report
-    return EMPTY_REPORT
-
-
-def _text(value: object) -> str:
-    if isinstance(value, str):
-        return value
-    return ""
 
 
 def _docker_connector(docker_host: str) -> aiohttp.BaseConnector:
