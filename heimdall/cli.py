@@ -1,32 +1,27 @@
 import argparse
 import asyncio
 import sys
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from collections.abc import Awaitable, Callable
+from contextlib import AbstractAsyncContextManager
 from uuid import uuid4
 
-import aiohttp
 import asyncpg
-from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+import uvicorn
 from langgraph.types import Command
 
+from heimdall.api.app import create_app
 from heimdall.channels import CliChannel, UserChannel
 from heimdall.graph import CompiledGraph, GraphState, build_graph
-from heimdall.providers import (
-    ChatModel,
-    ChatUnavailable,
-    Embedder,
-    EmbeddingsUnavailable,
-    GigaChatChatModel,
-    GigaChatEmbedder,
-    LocalEmbedder,
+from heimdall.providers import ChatUnavailable, EmbeddingsUnavailable
+from heimdall.rag import PgVectorStore, ingest_knowledge
+from heimdall.runtime.deps import (
+    AppDeps,
+    docker_connector,
+    ingest_production_deps,
+    parse_listen,
+    production_deps,
 )
-from heimdall.rag import PgVectorStore, VectorStore, ingest_knowledge
+from heimdall.runtime.runner import AskRunner
 from heimdall.runtime.state import (
     is_interrupted,
     pending_action,
@@ -34,12 +29,16 @@ from heimdall.runtime.state import (
     text,
 )
 from heimdall.settings import Settings
-from heimdall.tools import DockerClient, LokiClient, VictoriaMetricsClient
 
 _is_interrupted = is_interrupted
 _pending_action = pending_action
 _report = report
 _text = text
+
+# Re-export for tests and callers that import from cli.
+_docker_connector = docker_connector
+_production_deps = production_deps
+_ingest_production_deps = ingest_production_deps
 
 CHAT_UNAVAILABLE = "модель недоступна"
 EMBEDDINGS_UNAVAILABLE = "эмбеддинги недоступны"
@@ -55,35 +54,28 @@ STILL_INTERRUPTED = "агент снова ждёт подтверждения, 
 RESTART_ALREADY_RAN = "Рестарт уже выполнен"
 RESTART_OK = "успешно"
 RESTART_FAILED = "с ошибкой"  # noqa: RUF001
-_UNIX_PREFIX = "unix://"
 REPL_PROMPT = "heimdall> "
 REPL_EXIT_WORDS = frozenset({"exit", "quit"})
 
 
-@dataclass(frozen=True)
-class AppDeps:
-    store: VectorStore
-    embedder: Embedder
-    chat: ChatModel
-    docker: DockerClient
-    loki: LokiClient
-    vm: VictoriaMetricsClient
-    channel: UserChannel
-    checkpointer: BaseCheckpointSaver[Any]
-    knowledge_dir: Path
-
-
-def main(argv: list[str] | None = None, deps: AppDeps | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    deps: AppDeps | None = None,
+    *,
+    channel: UserChannel | None = None,
+) -> int:
     parser = _parser()
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else 1
+    if args.command == "serve":
+        return asyncio.run(run_serve())
     if args.command == "ask":
-        return asyncio.run(_ask(args.question, deps))
+        return asyncio.run(_ask(args.question, deps, channel))
     if args.command == "ingest":
         return asyncio.run(_ingest(deps))
-    return asyncio.run(_repl(deps))
+    return asyncio.run(_repl(deps, channel))
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -95,6 +87,7 @@ def _parser() -> argparse.ArgumentParser:
     ask = commands.add_parser("ask", help="diagnose a problem in the homelab")
     ask.add_argument("question", help="question in free form")
     commands.add_parser("ingest", help="index the knowledge base")
+    commands.add_parser("serve", help="run the agent control API")
     return parser
 
 
@@ -105,11 +98,36 @@ def _read_repl_line() -> str | None:
         return None
 
 
-async def _ask(question: str, deps: AppDeps | None) -> int:
+async def run_serve(settings: Settings | None = None) -> int:
+    resolved = settings if settings is not None else Settings()  # type: ignore[call-arg]
+    async with production_deps(resolved) as deps:
+        graph = build_graph(
+            retriever=deps.store,
+            embedder=deps.embedder,
+            chat=deps.chat,
+            docker=deps.docker,
+            loki=deps.loki,
+            vm=deps.vm,
+            checkpointer=deps.checkpointer,
+        )
+        runner = AskRunner(graph)
+        app = create_app(runner)
+        host, port = parse_listen(resolved.heimdall_listen)
+        config = uvicorn.Config(app, host=host, port=port, log_level="info")
+        server = uvicorn.Server(config)
+        await server.serve()
+    return 0
+
+
+async def _ask(
+    question: str,
+    deps: AppDeps | None,
+    channel: UserChannel | None,
+) -> int:
     if deps is not None:
-        return await _run_ask(question, deps)
+        return await _run_ask(question, deps, channel)
     return await _in_production(
-        lambda production: _run_ask(question, production),
+        lambda production: _run_ask(question, production, channel),
         _production_deps,
     )
 
@@ -120,13 +138,16 @@ async def _ingest(deps: AppDeps | None) -> int:
     return await _in_production(_run_ingest, _ingest_production_deps)
 
 
-async def _repl(deps: AppDeps | None) -> int:
+async def _repl(deps: AppDeps | None, channel: UserChannel | None) -> int:
     if deps is not None:
-        return await _run_repl(deps)
-    return await _in_production(_run_repl, _production_deps)
+        return await _run_repl(deps, channel)
+    return await _in_production(
+        lambda production: _run_repl(production, channel),
+        _production_deps,
+    )
 
 
-async def _run_repl(deps: AppDeps) -> int:
+async def _run_repl(deps: AppDeps, channel: UserChannel | None) -> int:
     graph = build_graph(
         retriever=deps.store,
         embedder=deps.embedder,
@@ -145,7 +166,7 @@ async def _run_repl(deps: AppDeps) -> int:
             continue
         if question.lower() in REPL_EXIT_WORDS:
             return 0
-        await _run_ask_with_graph(question, deps, graph)
+        await _run_ask_with_graph(question, graph, channel)
 
 
 async def _in_production(
@@ -160,7 +181,11 @@ async def _in_production(
         return 1
 
 
-async def _run_ask(question: str, deps: AppDeps) -> int:
+async def _run_ask(
+    question: str,
+    deps: AppDeps,
+    channel: UserChannel | None,
+) -> int:
     graph = build_graph(
         retriever=deps.store,
         embedder=deps.embedder,
@@ -170,14 +195,15 @@ async def _run_ask(question: str, deps: AppDeps) -> int:
         vm=deps.vm,
         checkpointer=deps.checkpointer,
     )
-    return await _run_ask_with_graph(question, deps, graph)
+    return await _run_ask_with_graph(question, graph, channel)
 
 
 async def _run_ask_with_graph(
     question: str,
-    deps: AppDeps,
     graph: CompiledGraph,
+    channel: UserChannel | None,
 ) -> int:
+    ch = channel if channel is not None else CliChannel()
     thread = {"thread_id": str(uuid4())}
     try:
         state = dict(
@@ -186,22 +212,22 @@ async def _run_ask_with_graph(
         if _is_interrupted(state):
             action = _pending_action(state)
             if action is None:
-                deps.channel.emit(BROKEN_PROPOSAL)
+                ch.emit(BROKEN_PROPOSAL)
                 return 1
-            decision = "yes" if deps.channel.confirm(action) else "no"
+            decision = "yes" if ch.confirm(action) else "no"
             state = dict(
                 await graph.ainvoke(Command(resume=decision), {"configurable": thread})
             )
             if _is_interrupted(state):
-                deps.channel.emit(STILL_INTERRUPTED)
+                ch.emit(STILL_INTERRUPTED)
                 return 1
     except ChatUnavailable:
-        return await _fail(graph, thread, deps.channel, CHAT_UNAVAILABLE)
+        return await _fail(graph, thread, ch, CHAT_UNAVAILABLE)
     except asyncpg.PostgresError as exc:
-        return await _fail(graph, thread, deps.channel, f"{STORE_UNAVAILABLE}: {exc}")
+        return await _fail(graph, thread, ch, f"{STORE_UNAVAILABLE}: {exc}")
     except Exception as exc:
-        return await _fail(graph, thread, deps.channel, f"{RUN_FAILED}: {exc}")
-    deps.channel.emit(_report(state))
+        return await _fail(graph, thread, ch, f"{RUN_FAILED}: {exc}")
+    ch.emit(_report(state))
     return 0
 
 
@@ -245,12 +271,12 @@ async def _run_ingest(deps: AppDeps) -> int:
             await store.ensure_schema()
         count = await ingest_knowledge(deps.knowledge_dir, store, deps.embedder)
     except EmbeddingsUnavailable:
-        deps.channel.emit(EMBEDDINGS_UNAVAILABLE)
+        print(EMBEDDINGS_UNAVAILABLE)
         return 1
     except Exception as exc:
-        deps.channel.emit(f"{INGEST_FAILED}: {exc}")
+        print(f"{INGEST_FAILED}: {exc}")
         return 1
-    deps.channel.emit(f"{INGESTED}: {count}")
+    print(f"{INGESTED}: {count}")
     return 0
 
 
@@ -267,60 +293,3 @@ def _initial_state(question: str) -> GraphState:
         execution_result=None,
         report=None,
     )
-
-
-def _docker_connector(docker_host: str) -> aiohttp.BaseConnector:
-    if not docker_host.startswith(_UNIX_PREFIX):
-        msg = f"DOCKER_HOST must be a unix:// socket, got {docker_host!r}"
-        raise ValueError(msg)
-    return aiohttp.UnixConnector(path=docker_host.removeprefix(_UNIX_PREFIX))
-
-
-def _make_embedder(settings: Settings, http: aiohttp.ClientSession) -> Embedder:
-    if settings.embedder == "gigachat":
-        return GigaChatEmbedder(settings, http)
-    return LocalEmbedder(settings.local_embedder_model)
-
-
-def _core_deps(
-    settings: Settings,
-    http: aiohttp.ClientSession,
-    docker_http: aiohttp.ClientSession,
-    checkpointer: BaseCheckpointSaver[Any],
-) -> AppDeps:
-    return AppDeps(
-        store=PgVectorStore(settings.postgres_dsn),
-        embedder=_make_embedder(settings, http),
-        chat=GigaChatChatModel(settings, http),
-        docker=DockerClient(settings.docker_host, docker_http),
-        loki=LokiClient(settings.loki_url, http),
-        vm=VictoriaMetricsClient(settings.victoriametrics_url, http),
-        channel=CliChannel(),
-        checkpointer=checkpointer,
-        knowledge_dir=settings.knowledge_dir,
-    )
-
-
-@asynccontextmanager
-async def _production_deps() -> AsyncIterator[AppDeps]:
-    settings = Settings()  # type: ignore[call-arg]
-    async with (
-        aiohttp.ClientSession() as http,
-        aiohttp.ClientSession(
-            connector=_docker_connector(settings.docker_host)
-        ) as docker_http,
-        AsyncSqliteSaver.from_conn_string(settings.checkpoint_path) as checkpointer,
-    ):
-        yield _core_deps(settings, http, docker_http, checkpointer)
-
-
-@asynccontextmanager
-async def _ingest_production_deps() -> AsyncIterator[AppDeps]:
-    settings = Settings()  # type: ignore[call-arg]
-    async with (
-        aiohttp.ClientSession() as http,
-        aiohttp.ClientSession(
-            connector=_docker_connector(settings.docker_host)
-        ) as docker_http,
-    ):
-        yield _core_deps(settings, http, docker_http, MemorySaver())

@@ -222,7 +222,6 @@ def make_deps(
     *,
     chat: Any,
     docker: FakeDocker | None = None,
-    channel: FakeChannel | None = None,
     store: Any | None = None,
     embedder: Any | None = None,
     knowledge_dir: Path = Path("docs/knowledge"),
@@ -234,7 +233,6 @@ def make_deps(
         docker=docker if docker is not None else FakeDocker(),  # type: ignore[arg-type]
         loki=FakeLoki(),  # type: ignore[arg-type]
         vm=FakeVictoriaMetrics(),  # type: ignore[arg-type]
-        channel=channel if channel is not None else FakeChannel(),
         checkpointer=MemorySaver(),
         knowledge_dir=knowledge_dir,
     )
@@ -257,9 +255,9 @@ def write_knowledge(root: Path) -> Path:
 def test_ask_executes_the_restart_when_the_human_confirms() -> None:
     docker = FakeDocker()
     channel = FakeChannel(answer=True)
-    deps = make_deps(chat=postgres_chat(), docker=docker, channel=channel)
+    deps = make_deps(chat=postgres_chat(), docker=docker)
 
-    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+    code = main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert code == 0
     assert docker.restart_calls == ["postgres"]
@@ -269,9 +267,9 @@ def test_ask_executes_the_restart_when_the_human_confirms() -> None:
 def test_ask_never_restarts_when_the_human_declines() -> None:
     docker = FakeDocker()
     channel = FakeChannel(answer=False)
-    deps = make_deps(chat=postgres_chat(), docker=docker, channel=channel)
+    deps = make_deps(chat=postgres_chat(), docker=docker)
 
-    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+    code = main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert code == 0
     assert docker.restart_calls == []
@@ -279,9 +277,9 @@ def test_ask_never_restarts_when_the_human_declines() -> None:
 
 def test_ask_shows_the_proposed_action_to_the_channel() -> None:
     channel = FakeChannel(answer=False)
-    deps = make_deps(chat=postgres_chat(), channel=channel)
+    deps = make_deps(chat=postgres_chat())
 
-    main(["ask", POSTGRES_QUESTION], deps=deps)
+    main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert len(channel.actions) == 1
     action = channel.actions[0]
@@ -293,9 +291,9 @@ def test_ask_shows_the_proposed_action_to_the_channel() -> None:
 
 def test_ask_emits_the_final_report() -> None:
     channel = FakeChannel(answer=True)
-    deps = make_deps(chat=postgres_chat(), channel=channel)
+    deps = make_deps(chat=postgres_chat())
 
-    main(["ask", POSTGRES_QUESTION], deps=deps)
+    main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert "Стало: healthy." in channel.output
 
@@ -303,9 +301,9 @@ def test_ask_emits_the_final_report() -> None:
 def test_ask_without_a_proposal_does_not_ask_the_human() -> None:
     channel = FakeChannel(answer=True)
     docker = FakeDocker()
-    deps = make_deps(chat=postgres_chat(None), docker=docker, channel=channel)
+    deps = make_deps(chat=postgres_chat(None), docker=docker)
 
-    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+    code = main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert code == 0
     assert channel.actions == []
@@ -317,9 +315,9 @@ def test_ask_reports_that_the_model_is_unavailable() -> None:
     docker = FakeDocker()
     channel = FakeChannel(answer=True)
     chat = FlakyChatModel(postgres_chat(), fail_after=0)
-    deps = make_deps(chat=chat, docker=docker, channel=channel)
+    deps = make_deps(chat=chat, docker=docker)
 
-    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+    code = main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert code == 1
     assert "модель недоступна" in channel.output
@@ -329,9 +327,9 @@ def test_ask_reports_that_the_model_is_unavailable() -> None:
 def test_ask_reports_model_failure_after_the_resume() -> None:
     channel = FakeChannel(answer=True)
     chat = FlakyChatModel(postgres_chat(), fail_after=4)
-    deps = make_deps(chat=chat, channel=channel)
+    deps = make_deps(chat=chat)
 
-    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+    code = main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert code == 1
     assert "модель недоступна" in channel.output
@@ -341,9 +339,9 @@ def test_ask_says_the_restart_already_ran_when_verify_loses_the_model() -> None:
     docker = FakeDocker()
     channel = FakeChannel(answer=True)
     chat = FlakyChatModel(postgres_chat(), fail_after=4)
-    deps = make_deps(chat=chat, docker=docker, channel=channel)
+    deps = make_deps(chat=chat, docker=docker)
 
-    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+    code = main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert code == 1
     assert docker.restart_calls == ["postgres"]
@@ -355,9 +353,9 @@ def test_ask_says_the_restart_already_ran_when_verify_loses_the_model() -> None:
 def test_ask_does_not_mention_a_restart_that_never_happened() -> None:
     channel = FakeChannel(answer=True)
     chat = FlakyChatModel(postgres_chat(), fail_after=0)
-    deps = make_deps(chat=chat, channel=channel)
+    deps = make_deps(chat=chat)
 
-    main(["ask", POSTGRES_QUESTION], deps=deps)
+    main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert "рестарт" not in channel.output.lower()
 
@@ -365,9 +363,9 @@ def test_ask_does_not_mention_a_restart_that_never_happened() -> None:
 def test_ask_points_at_ingest_when_the_knowledge_store_is_missing() -> None:
     channel = FakeChannel()
     store = BrokenStore(asyncpg.UndefinedTableError('relation "chunks" does not exist'))
-    deps = make_deps(chat=postgres_chat(), store=store, channel=channel)
+    deps = make_deps(chat=postgres_chat(), store=store)
 
-    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+    code = main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert code != 0
     assert "ingest" in channel.output
@@ -376,9 +374,9 @@ def test_ask_points_at_ingest_when_the_knowledge_store_is_missing() -> None:
 def test_ask_reports_an_unexpected_infrastructure_failure() -> None:
     channel = FakeChannel()
     store = BrokenStore(ConnectionRefusedError("postgres refused the connection"))
-    deps = make_deps(chat=postgres_chat(), store=store, channel=channel)
+    deps = make_deps(chat=postgres_chat(), store=store)
 
-    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+    code = main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert code != 0
     assert "postgres refused the connection" in channel.output
@@ -390,9 +388,9 @@ def test_ask_fails_when_the_interrupt_payload_is_not_an_action(
     channel = FakeChannel(answer=True)
     graph = StubGraph({"proposed_action": None})
     patch_graph(monkeypatch, graph)
-    deps = make_deps(chat=postgres_chat(), channel=channel)
+    deps = make_deps(chat=postgres_chat())
 
-    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+    code = main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert code != 0
     assert graph.invocations == 1
@@ -415,9 +413,9 @@ def test_ask_fails_when_the_graph_is_still_interrupted_after_the_resume(
         }
     )
     patch_graph(monkeypatch, graph)
-    deps = make_deps(chat=postgres_chat(), channel=channel)
+    deps = make_deps(chat=postgres_chat())
 
-    code = main(["ask", POSTGRES_QUESTION], deps=deps)
+    code = main(["ask", POSTGRES_QUESTION], deps=deps, channel=channel)
 
     assert code != 0
     assert graph.invocations == 2
@@ -425,12 +423,12 @@ def test_ask_fails_when_the_graph_is_still_interrupted_after_the_resume(
     assert "черновик" not in channel.output
 
 
-def test_ingest_upserts_the_knowledge_directory(tmp_path: Path) -> None:
+def test_ingest_upserts_the_knowledge_directory(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     store = InMemoryVectorStore()
-    channel = FakeChannel()
     deps = make_deps(
         chat=postgres_chat(),
-        channel=channel,
         store=store,
         knowledge_dir=write_knowledge(tmp_path),
     )
@@ -443,14 +441,14 @@ def test_ingest_upserts_the_knowledge_directory(tmp_path: Path) -> None:
         "runbooks/postgres.md",
         "inventory.md",
     ]
-    assert "2" in channel.output
+    assert "2" in capsys.readouterr().out
 
 
-def test_ingest_reports_unavailable_embeddings(tmp_path: Path) -> None:
-    channel = FakeChannel()
+def test_ingest_reports_unavailable_embeddings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     deps = make_deps(
         chat=postgres_chat(),
-        channel=channel,
         embedder=BrokenEmbedder(),
         knowledge_dir=write_knowledge(tmp_path),
     )
@@ -458,15 +456,15 @@ def test_ingest_reports_unavailable_embeddings(tmp_path: Path) -> None:
     code = main(["ingest"], deps=deps)
 
     assert code == 1
-    assert "эмбеддинги недоступны" in channel.output
+    assert "эмбеддинги недоступны" in capsys.readouterr().out
 
 
-def test_ingest_reports_an_unreachable_store(tmp_path: Path) -> None:
-    channel = FakeChannel()
+def test_ingest_reports_an_unreachable_store(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     store = BrokenStore(ConnectionRefusedError("postgres refused the connection"))
     deps = make_deps(
         chat=postgres_chat(),
-        channel=channel,
         store=store,
         knowledge_dir=write_knowledge(tmp_path),
     )
@@ -474,7 +472,7 @@ def test_ingest_reports_an_unreachable_store(tmp_path: Path) -> None:
     code = main(["ingest"], deps=deps)
 
     assert code != 0
-    assert "postgres refused the connection" in channel.output
+    assert "postgres refused the connection" in capsys.readouterr().out
 
 
 def test_ask_reports_a_broken_production_setup(
@@ -550,9 +548,9 @@ def test_bare_heimdall_runs_repl_until_exit(monkeypatch: pytest.MonkeyPatch) -> 
     lines = iter(["Что с postgres?", "exit"])  # noqa: RUF001
     monkeypatch.setattr("heimdall.cli._read_repl_line", lambda: next(lines, "exit"))
     channel = FakeChannel()
-    deps = make_deps(chat=_short_report_chat(rounds=1), channel=channel)
+    deps = make_deps(chat=_short_report_chat(rounds=1))
 
-    code = main([], deps=deps)
+    code = main([], deps=deps, channel=channel)
 
     assert code == 0
     assert channel.output
@@ -562,9 +560,9 @@ def test_repl_handles_multiple_questions(monkeypatch: pytest.MonkeyPatch) -> Non
     lines = iter(["вопрос один", "вопрос два", "quit"])
     monkeypatch.setattr("heimdall.cli._read_repl_line", lambda: next(lines, "quit"))
     channel = FakeChannel()
-    deps = make_deps(chat=_short_report_chat(rounds=2), channel=channel)
+    deps = make_deps(chat=_short_report_chat(rounds=2))
 
-    code = main([], deps=deps)
+    code = main([], deps=deps, channel=channel)
 
     assert code == 0
     assert channel.messages  # at least one report emitted
@@ -582,9 +580,9 @@ def test_repl_skips_blank_lines(monkeypatch: pytest.MonkeyPatch) -> None:
     lines = iter(["", "  ", "exit"])
     monkeypatch.setattr("heimdall.cli._read_repl_line", lambda: next(lines, "exit"))
     channel = FakeChannel()
-    deps = make_deps(chat=_short_report_chat(rounds=1), channel=channel)
+    deps = make_deps(chat=_short_report_chat(rounds=1))
 
-    assert main([], deps=deps) == 0
+    assert main([], deps=deps, channel=channel) == 0
     assert channel.messages == []
 
 
@@ -594,3 +592,23 @@ def test_main_with_an_unknown_command_fails() -> None:
 
 def test_ask_without_a_question_fails() -> None:
     assert main(["ask"], deps=make_deps(chat=postgres_chat())) != 0
+
+
+def test_serve_command_is_registered() -> None:
+    from heimdall.cli import _parser
+
+    parser = _parser()
+    args = parser.parse_args(["serve"])
+    assert args.command == "serve"
+
+
+def test_main_serve_invokes_run_serve(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: dict[str, bool] = {}
+
+    async def fake_run_serve() -> int:
+        called["yes"] = True
+        return 0
+
+    monkeypatch.setattr("heimdall.cli.run_serve", fake_run_serve)
+    assert main(["serve"]) == 0
+    assert called["yes"]
