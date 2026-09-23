@@ -82,8 +82,8 @@ docker compose exec -it heimdall cli                 # client REPL inside the co
 **Pull from GHCR** (images build and publish only on `v*` tags — not on every PR/push):
 
 ```bash
-docker pull ghcr.io/freemspwnz/heimdall:v0.2.0-embeddings
-docker pull ghcr.io/freemspwnz/heimdall:v0.2.0-slim
+docker pull ghcr.io/freemspwnz/heimdall:v0.3.0-embeddings
+docker pull ghcr.io/freemspwnz/heimdall:v0.3.0-slim
 docker pull ghcr.io/freemspwnz/heimdall:embeddings
 docker pull ghcr.io/freemspwnz/heimdall:latest   # slim only
 ```
@@ -114,7 +114,7 @@ uv run pytest && uv run mypy heimdall && uv run ruff check heimdall tests
 
 ## Releases
 
-When cutting a release tag (e.g. `v0.2.0`), move the `[Unreleased]` section in `CHANGELOG.md` to `## [0.2.0]` before tagging so `gh-release` can pick up the notes.
+When cutting a release tag (e.g. `v0.3.0`), move the `[Unreleased]` section in `CHANGELOG.md` to `## [0.3.0]` before tagging so `gh-release` can pick up the notes.
 
 ## Commands
 

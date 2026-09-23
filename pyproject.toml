@@ -1,6 +1,6 @@
 [project]
 name = "heimdall"
-version = "0.2.0"
+version = "0.3.0"
 description = "DevOps agent for a homelab"
 readme = "README.md"
 authors = [
