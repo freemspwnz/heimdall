@@ -1,3 +1,5 @@
+import pytest
+
 from heimdall.settings import Settings
 
 
@@ -44,3 +46,17 @@ def test_settings_optional_paths_and_oauth_defaults(monkeypatch) -> None:
     assert s.gigachat_scope == "GIGACHAT_API_PERS"
     assert s.checkpoint_path == "heimdall-checkpoints.sqlite"
     assert s.knowledge_dir.as_posix() == "docs/knowledge"
+
+
+def test_settings_heimdall_listen_and_url_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GIGACHAT_CREDENTIALS", "secret")
+    monkeypatch.setenv(
+        "POSTGRES_DSN", "postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall"
+    )
+    monkeypatch.delenv("HEIMDALL_LISTEN", raising=False)
+    monkeypatch.delenv("HEIMDALL_URL", raising=False)
+    s = Settings(_env_file=None)
+    assert s.heimdall_listen == "0.0.0.0:8080"
+    assert s.heimdall_url == "http://127.0.0.1:8080"
