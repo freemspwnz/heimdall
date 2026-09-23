@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Literal, cast
@@ -58,9 +59,11 @@ async def ask(body: AskBody, request: Request) -> StreamingResponse:
                 if event.run_id is not None:
                     run_id = event.run_id
                 yield _sse(event)
-        finally:
+        except asyncio.CancelledError:
+            # Client disconnected mid-stream (often while waiting on HITL).
             if run_id is not None:
                 await runner.cancel_hitl(run_id)
+            raise
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

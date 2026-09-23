@@ -5,12 +5,11 @@ import socket
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any
 
-import aiohttp
 import pytest
 import uvicorn
 from heimdall.api.app import create_app
 from heimdall.client.repl import AGENT_UNAVAILABLE, run_repl
-from heimdall.client.session import AgentClient
+from heimdall.client.session import AgentClient, make_client_session
 from heimdall.graph import build_graph
 from heimdall.models import Observation, ToolCall
 from heimdall.providers import FakeChatModel, FakeEmbedder, ScriptedTurn
@@ -160,10 +159,26 @@ async def test_client_ask_parses_report(
 ) -> None:
     app = create_app(AskRunner(graph_without_proposal()))
     async for base_url in serve_app(app):
-        async with aiohttp.ClientSession() as http:
+        async with make_client_session() as http:
             client = AgentClient(base_url, http=http)
             events = [e async for e in client.ask("ping")]
         assert any(e.type == "report" and e.text for e in events)
+        return
+
+
+@pytest.mark.asyncio
+async def test_two_asks_reuse_same_session(
+    serve_app: Callable[[Any], AsyncIterator[str]],
+) -> None:
+    """Regression: keep-alive after SSE used to break the second ask."""
+    app = create_app(AskRunner(graph_without_proposal()))
+    async for base_url in serve_app(app):
+        async with make_client_session() as http:
+            client = AgentClient(base_url, http=http)
+            first = [e async for e in client.ask("ping")]
+            second = [e async for e in client.ask("pong")]
+        assert any(e.type == "report" for e in first)
+        assert any(e.type == "report" for e in second)
         return
 
 
@@ -174,7 +189,7 @@ async def test_client_ask_and_resume_hitl(
     docker = FakeDocker()
     app = create_app(AskRunner(graph_with_restart(docker)))
     async for base_url in serve_app(app):
-        async with aiohttp.ClientSession() as http:
+        async with make_client_session() as http:
             client = AgentClient(base_url, http=http)
             events = []
             async for event in client.ask(POSTGRES_QUESTION):

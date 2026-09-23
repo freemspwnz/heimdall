@@ -4,6 +4,7 @@ services:
       context: .
       target: ${HEIMDALL_IMAGE_TARGET:-embeddings}
     image: heimdall:${HEIMDALL_IMAGE_TARGET:-embeddings}
+    container_name: heimdall
     env_file:
       - .env
     environment:

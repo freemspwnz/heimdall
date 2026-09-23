@@ -10,6 +10,18 @@ import aiohttp
 from heimdall.models import Action
 from heimdall.runtime.events import RunEvent, RunEventType
 
+# SSE ask can run for minutes (GigaChat + tools); do not apply a total timeout.
+_ASK_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=10)
+_RESUME_TIMEOUT = aiohttp.ClientTimeout(total=30, sock_connect=10)
+
+
+def make_client_session() -> aiohttp.ClientSession:
+    """Session safe to reuse after SSE: force-close avoids stale keep-alive sockets."""
+    return aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(force_close=True),
+        timeout=_ASK_TIMEOUT,
+    )
+
 
 class AgentClient:
     def __init__(
@@ -23,7 +35,7 @@ class AgentClient:
 
     async def _session(self) -> aiohttp.ClientSession:
         if self._http is None:
-            self._http = aiohttp.ClientSession()
+            self._http = make_client_session()
         return self._http
 
     async def aclose(self) -> None:
@@ -34,7 +46,12 @@ class AgentClient:
     async def ask(self, question: str) -> AsyncIterator[RunEvent]:
         session = await self._session()
         url = urljoin(self._base_url, "v1/ask")
-        async with session.post(url, json={"question": question}) as resp:
+        async with session.post(
+            url,
+            json={"question": question},
+            timeout=_ASK_TIMEOUT,
+            headers={"Connection": "close"},
+        ) as resp:
             resp.raise_for_status()
             async for event in _iter_sse(resp.content):
                 yield event
@@ -42,7 +59,12 @@ class AgentClient:
     async def resume(self, run_id: str, decision: Literal["yes", "no"]) -> None:
         session = await self._session()
         url = urljoin(self._base_url, f"v1/runs/{run_id}/resume")
-        async with session.post(url, json={"decision": decision}) as resp:
+        async with session.post(
+            url,
+            json={"decision": decision},
+            timeout=_RESUME_TIMEOUT,
+            headers={"Connection": "close"},
+        ) as resp:
             resp.raise_for_status()
 
 

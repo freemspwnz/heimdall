@@ -6,10 +6,11 @@ from typing import Literal
 import aiohttp
 
 from heimdall.channels.cli import POSITIVE_ANSWERS, PROMPT
-from heimdall.client.session import AgentClient
+from heimdall.client.session import AgentClient, make_client_session
 from heimdall.models import Action
 
 AGENT_UNAVAILABLE = "агент не запущен, запустите heimdall serve"
+ASK_FAILED = "не удалось выполнить запрос"
 REPL_PROMPT = "heimdall> "
 REPL_EXIT_WORDS = frozenset({"exit", "quit"})
 
@@ -56,7 +57,7 @@ async def run_repl(
 ) -> int:
     read_confirm = confirm_fn if confirm_fn is not None else _default_confirm
     try:
-        async with aiohttp.ClientSession() as http:
+        async with make_client_session() as http:
             client = AgentClient(base_url, http=http)
             while True:
                 raw = input_fn()
@@ -79,24 +80,25 @@ async def run_repl(
                             decision = _decision_from_answer(read_confirm())
                             if event.run_id is None:
                                 output_fn("missing run_id for hitl")
-                                return 1
+                                continue
                             await client.resume(event.run_id, decision)
                         elif event.type in {"report", "error", "busy"}:
                             if event.text:
                                 output_fn(event.text)
                 except (
+                    TimeoutError,
                     aiohttp.ClientConnectorError,
                     aiohttp.ClientOSError,
                     aiohttp.ServerDisconnectedError,
+                    aiohttp.ClientPayloadError,
+                    aiohttp.ClientResponseError,
                     OSError,
-                ):
-                    output_fn(AGENT_UNAVAILABLE)
-                    return 1
-    except (
-        aiohttp.ClientConnectorError,
-        aiohttp.ClientOSError,
-        aiohttp.ServerDisconnectedError,
-        OSError,
-    ):
+                ) as exc:
+                    if isinstance(exc, aiohttp.ClientConnectorError):
+                        output_fn(AGENT_UNAVAILABLE)
+                        return 1
+                    output_fn(f"{ASK_FAILED}: {exc}")
+                    continue
+    except aiohttp.ClientConnectorError:
         output_fn(AGENT_UNAVAILABLE)
         return 1
