@@ -80,10 +80,16 @@ class AskRunner:
         finally:
             self._lock.release()
 
-    async def resume(self, run_id: str, decision: Literal["yes", "no"]) -> None:
+    async def resume(
+        self, run_id: str, decision: Literal["yes", "no"]
+    ) -> Literal["ok", "unknown", "not_waiting"]:
         future = self._waiting.get(run_id)
-        if future is not None and not future.done():
-            future.set_result(decision)
+        if future is None:
+            return "unknown"
+        if future.done():
+            return "not_waiting"
+        future.set_result(decision)
+        return "ok"
 
     async def cancel_hitl(self, run_id: str) -> None:
         await self.resume(run_id, "no")
