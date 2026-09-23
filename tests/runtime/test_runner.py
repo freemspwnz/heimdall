@@ -1,3 +1,4 @@
+import asyncio
 import itertools
 import json
 from collections.abc import AsyncIterator
@@ -170,3 +171,33 @@ async def test_cancel_hitl_resumes_no_without_restart() -> None:
     rest = [e async for e in gen]
     assert docker.restart_calls == []
     assert any(e.type == "report" for e in rest)
+
+
+@pytest.mark.asyncio
+async def test_waiting_task_cancelled_resumes_no_without_restart() -> None:
+    """Consumer/task cancel while awaiting HITL Future → treat as no."""
+    docker = FakeDocker()
+    runner = AskRunner(graph_with_restart(docker))
+    gen = runner.ask(POSTGRES_QUESTION)
+    hitl = await _next_hitl(gen)
+    assert hitl.run_id is not None
+
+    async def drain_after_hitl() -> list[RunEvent]:
+        return [e async for e in gen]
+
+    task = asyncio.create_task(drain_after_hitl())
+    done, _pending = await asyncio.wait({task}, timeout=0.05)
+    assert not done, "drain should block on HITL Future"
+
+    task.cancel()
+    rest = await task
+
+    assert docker.restart_calls == []
+    assert any(e.type == "report" for e in rest)
+    assert not runner._lock.locked()
+
+    # Lock released: subsequent ask is not stuck on busy forever.
+    follow_up_gen = runner.ask("ping")
+    first = await follow_up_gen.__anext__()
+    assert first.type != "busy"
+    await follow_up_gen.aclose()
