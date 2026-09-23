@@ -1,7 +1,12 @@
+import os
 from pathlib import Path
 from typing import Literal
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_HEIMDALL_URL = "http://127.0.0.1:8080"
+DEFAULT_HEIMDALL_LISTEN = "0.0.0.0:8080"
 
 
 class Settings(BaseSettings):
@@ -25,5 +30,11 @@ class Settings(BaseSettings):
     knowledge_dir: Path = Path("docs/knowledge")
     embedder: Literal["local", "gigachat"] = "local"
     local_embedder_model: str = "intfloat/multilingual-e5-base"
-    heimdall_listen: str = "0.0.0.0:8080"
-    heimdall_url: str = "http://127.0.0.1:8080"
+    heimdall_listen: str = DEFAULT_HEIMDALL_LISTEN
+    heimdall_url: str = DEFAULT_HEIMDALL_URL
+
+
+def resolve_heimdall_url() -> str:
+    """Client-side URL only — does not require GigaChat/Postgres credentials."""
+    load_dotenv()
+    return os.environ.get("HEIMDALL_URL", DEFAULT_HEIMDALL_URL)

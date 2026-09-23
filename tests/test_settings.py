@@ -1,5 +1,5 @@
 import pytest
-from heimdall.settings import Settings
+from heimdall.settings import Settings, resolve_heimdall_url
 
 
 def test_settings_read_env(monkeypatch) -> None:
@@ -59,3 +59,19 @@ def test_settings_heimdall_listen_and_url_defaults(
     s = Settings(_env_file=None)
     assert s.heimdall_listen == "0.0.0.0:8080"
     assert s.heimdall_url == "http://127.0.0.1:8080"
+
+
+def test_resolve_heimdall_url_default_without_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("heimdall.settings.load_dotenv", lambda: None)
+    monkeypatch.delenv("HEIMDALL_URL", raising=False)
+    monkeypatch.delenv("GIGACHAT_CREDENTIALS", raising=False)
+    monkeypatch.delenv("POSTGRES_DSN", raising=False)
+    assert resolve_heimdall_url() == "http://127.0.0.1:8080"
+
+
+def test_resolve_heimdall_url_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("heimdall.settings.load_dotenv", lambda: None)
+    monkeypatch.setenv("HEIMDALL_URL", "http://agent:8080")
+    assert resolve_heimdall_url() == "http://agent:8080"

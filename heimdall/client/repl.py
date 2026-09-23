@@ -13,10 +13,19 @@ AGENT_UNAVAILABLE = "агент не запущен, запустите heimdall
 REPL_PROMPT = "heimdall> "
 REPL_EXIT_WORDS = frozenset({"exit", "quit"})
 
+InputFn = Callable[[], str | None]
+
 
 def _default_input() -> str | None:
     try:
         return input(REPL_PROMPT)
+    except EOFError:
+        return None
+
+
+def _default_confirm() -> str | None:
+    try:
+        return input(PROMPT)
     except EOFError:
         return None
 
@@ -41,9 +50,11 @@ def _decision_from_answer(answer: str | None) -> Literal["yes", "no"]:
 
 async def run_repl(
     base_url: str,
-    input_fn: Callable[[], str | None] = _default_input,
+    input_fn: InputFn = _default_input,
+    confirm_fn: InputFn | None = None,
     output_fn: Callable[[str], None] = _default_output,
 ) -> int:
+    read_confirm = confirm_fn if confirm_fn is not None else _default_confirm
     try:
         async with aiohttp.ClientSession() as http:
             client = AgentClient(base_url, http=http)
@@ -65,8 +76,7 @@ async def run_repl(
                             if event.action is not None:
                                 for line in _format_action(event.action):
                                     output_fn(line)
-                            output_fn(PROMPT.rstrip())
-                            decision = _decision_from_answer(input_fn())
+                            decision = _decision_from_answer(read_confirm())
                             if event.run_id is None:
                                 output_fn("missing run_id for hitl")
                                 return 1
@@ -90,4 +100,3 @@ async def run_repl(
     ):
         output_fn(AGENT_UNAVAILABLE)
         return 1
-    return 0

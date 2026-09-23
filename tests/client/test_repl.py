@@ -195,13 +195,15 @@ async def test_repl_confirms_hitl(
 ) -> None:
     docker = FakeDocker()
     app = create_app(AskRunner(graph_with_restart(docker)))
-    answers: Iterator[str] = iter([POSTGRES_QUESTION, "y", "exit"])
+    answers: Iterator[str] = iter([POSTGRES_QUESTION, "exit"])
+    confirms: Iterator[str] = iter(["y"])
     outputs: list[str] = []
 
     async for base_url in serve_app(app):
         code = await run_repl(
             base_url,
             input_fn=lambda: next(answers),
+            confirm_fn=lambda: next(confirms),
             output_fn=outputs.append,
         )
         assert code == 0
@@ -209,6 +211,8 @@ async def test_repl_confirms_hitl(
         joined = "\n".join(outputs)
         assert "Стало: healthy." in joined
         assert "postgres" in joined.lower()
+        assert "heimdall>" not in joined
+        assert "Выполнить?" not in joined
         return
 
 

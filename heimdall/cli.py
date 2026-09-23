@@ -19,7 +19,7 @@ from heimdall.runtime.deps import (
     production_deps,
 )
 from heimdall.runtime.runner import AskRunner
-from heimdall.settings import Settings
+from heimdall.settings import Settings, resolve_heimdall_url
 
 # Re-export for tests and callers that import from cli.
 _docker_connector = docker_connector
@@ -60,9 +60,8 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def _run_client_repl(settings: Settings | None = None) -> int:
-    resolved = settings if settings is not None else Settings()  # type: ignore[call-arg]
-    return await run_repl(resolved.heimdall_url)
+async def _run_client_repl(base_url: str | None = None) -> int:
+    return await run_repl(base_url if base_url is not None else resolve_heimdall_url())
 
 
 async def run_serve(settings: Settings | None = None) -> int:

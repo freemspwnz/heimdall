@@ -205,11 +205,14 @@ def test_bare_heimdall_runs_client_repl(monkeypatch: pytest.MonkeyPatch) -> None
         called["url"] = base_url
         return 0
 
-    monkeypatch.setenv("GIGACHAT_CREDENTIALS", "secret")
-    monkeypatch.setenv(
-        "POSTGRES_DSN", "postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall"
-    )
+    monkeypatch.delenv("HEIMDALL_URL", raising=False)
+    monkeypatch.delenv("GIGACHAT_CREDENTIALS", raising=False)
+    monkeypatch.delenv("POSTGRES_DSN", raising=False)
     monkeypatch.setattr("heimdall.cli.run_repl", fake_repl)
+    monkeypatch.setattr(
+        "heimdall.cli.resolve_heimdall_url",
+        lambda: "http://127.0.0.1:8080",
+    )
     assert main([]) == 0
     assert called["url"] == "http://127.0.0.1:8080"
 
@@ -222,13 +225,13 @@ def test_cli_subcommand_runs_client_repl(monkeypatch: pytest.MonkeyPatch) -> Non
         called["url"] = base_url
         return 0
 
-    monkeypatch.setenv("GIGACHAT_CREDENTIALS", "secret")
-    monkeypatch.setenv(
-        "POSTGRES_DSN", "postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall"
-    )
     monkeypatch.setattr("heimdall.cli.run_repl", fake_repl)
+    monkeypatch.setattr(
+        "heimdall.cli.resolve_heimdall_url",
+        lambda: "http://example.test:9",
+    )
     assert main(["cli"]) == 0
-    assert called["url"] == "http://127.0.0.1:8080"
+    assert called["url"] == "http://example.test:9"
 
 
 def test_main_with_an_unknown_command_fails() -> None:

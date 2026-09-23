@@ -11,6 +11,11 @@
 - `heimdall serve` FastAPI control API (SSE ask stream + HITL resume)
 - Compose service runs `heimdall serve` in the background; use `docker compose exec -it heimdall heimdall` for the client REPL
 
+### Fixed
+
+- CLI HITL confirm uses `Выполнить? [y/N]:` without a second `heimdall>` prompt
+- Thin client reads `HEIMDALL_URL` without requiring GigaChat/Postgres credentials
+
 ## [0.2.0]
 
 ### Added
