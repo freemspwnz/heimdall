@@ -6,7 +6,6 @@ from urllib.parse import urljoin
 import aiohttp
 
 from heimdall.domain.models import Action
-from heimdall.infrastructure.channels.cli import POSITIVE_ANSWERS, PROMPT
 
 from .session import AgentClient, make_client_session
 
@@ -14,7 +13,8 @@ AGENT_UNAVAILABLE = "агент не запущен, запустите heimdall
 ASK_FAILED = "не удалось выполнить запрос"
 REPL_PROMPT = "heimdall> "
 REPL_EXIT_WORDS = frozenset({"exit", "quit"})
-
+POSITIVE_ANSWERS = frozenset({"y", "yes"})
+PROMPT = "Выполнить? [y/N]: "
 _PROBE_TIMEOUT = aiohttp.ClientTimeout(total=5, sock_connect=5)
 
 InputFn = Callable[[], str | None]
