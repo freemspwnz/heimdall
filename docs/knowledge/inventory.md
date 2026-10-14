@@ -15,7 +15,7 @@ Homelab на одном Docker-хосте (Intel N100): агент Heimdall кр
 - restartable: true
 
 ## tunnel (local only)
-- containers: sing-box, 3x-ui
+- containers: 3x-ui
 - restartable: true
 - remote VPN host is out of scope for v1
 
