@@ -2,8 +2,8 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from heimdall.constants import MAX_OBSERVATION_LINES
-from heimdall.tools import LokiClient
+from heimdall.infrastructure.aiohttp import LokiClient
+from heimdall.infrastructure.constants import MAX_OBSERVATION_LINES
 
 
 def _response(status: int, body: dict[str, object] | str) -> MagicMock:

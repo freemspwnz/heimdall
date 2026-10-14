@@ -5,12 +5,13 @@ from typing import Any
 
 import httpx
 import pytest
-from heimdall.api.app import create_app
-from heimdall.graph import build_graph
-from heimdall.models import Observation, ToolCall
-from heimdall.providers import FakeChatModel, FakeEmbedder, ScriptedTurn
-from heimdall.rag import InMemoryVectorStore
-from heimdall.runtime.runner import AskRunner
+from heimdall.application.models import ToolCall
+from heimdall.domain.models import Observation
+from heimdall.infrastructure.embedders import FakeEmbedder
+from heimdall.infrastructure.graph import AskRunner, build_graph
+from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
+from heimdall.infrastructure.store import InMemoryVectorStore
+from heimdall.presentation.api.app import create_app
 from httpx import ASGITransport
 from langgraph.checkpoint.memory import MemorySaver
 

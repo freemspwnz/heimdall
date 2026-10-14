@@ -9,14 +9,15 @@ from typing import Any
 
 import pytest
 import uvicorn
-from heimdall.api.app import create_app
-from heimdall.client.repl import AGENT_UNAVAILABLE, ASK_FAILED, run_repl
-from heimdall.client.session import AgentClient, make_client_session
-from heimdall.graph import build_graph
-from heimdall.models import Observation, ToolCall
-from heimdall.providers import FakeChatModel, FakeEmbedder, ScriptedTurn
-from heimdall.rag import InMemoryVectorStore
-from heimdall.runtime.runner import AskRunner
+from heimdall.application.models import ToolCall
+from heimdall.domain.models import Observation
+from heimdall.infrastructure.embedders import FakeEmbedder
+from heimdall.infrastructure.graph import AskRunner, build_graph
+from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
+from heimdall.infrastructure.store import InMemoryVectorStore
+from heimdall.presentation.api.app import create_app
+from heimdall.presentation.client.repl import AGENT_UNAVAILABLE, ASK_FAILED, run_repl
+from heimdall.presentation.client.session import AgentClient, make_client_session
 from langgraph.checkpoint.memory import MemorySaver
 
 POSTGRES_QUESTION = "Что с postgres?"  # noqa: RUF001
@@ -317,7 +318,7 @@ async def test_repl_connector_error_after_start_continues(
     answers: Iterator[str] = iter(["ping", "pong", "exit"])
     call_count = {"n": 0}
 
-    from heimdall.client import session as session_mod
+    from heimdall.presentation.client import session as session_mod
 
     original_ask = session_mod.AgentClient.ask
 

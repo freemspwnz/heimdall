@@ -2,9 +2,12 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from heimdall.models import Chunk
-from heimdall.providers import KEYWORDS, EmbeddingsUnavailable, FakeEmbedder
-from heimdall.rag import InMemoryVectorStore, PgVectorStore, ingest_knowledge
+from heimdall.application.exceptions import EmbeddingsUnavailable
+from heimdall.application.use_cases.rag import ingest_knowledge
+from heimdall.domain.models import Chunk
+from heimdall.infrastructure.embedders import FakeEmbedder
+from heimdall.infrastructure.embedders.fake import KEYWORDS
+from heimdall.infrastructure.store import InMemoryVectorStore, PgVectorStore
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[2] / "docs" / "knowledge"
 TUNNEL_QUERY = "Почему отвалился туннель"
@@ -48,7 +51,7 @@ async def test_ingest_knowledge_retrieves_tunnel_runbook() -> None:
     assert count > 0
     hits = await store.search(TUNNEL_QUERY, embedder)
     blob = " ".join(hit.text for hit in hits)
-    assert "sing-box" in blob or "3x-ui" in blob
+    assert "3x-ui" in blob
 
 
 @pytest.mark.asyncio
@@ -64,7 +67,9 @@ async def test_pgvector_ensure_schema_creates_extension(
 ) -> None:
     conn = _pg_connection()
     connect = AsyncMock(return_value=conn)
-    monkeypatch.setattr("heimdall.rag.store.asyncpg.connect", connect)
+    monkeypatch.setattr(
+        "heimdall.infrastructure.store.pgvector.asyncpg.connect", connect
+    )
     store = PgVectorStore(DSN)
     await store.ensure_schema()
     connect.assert_awaited_once_with(DSN)
@@ -78,7 +83,9 @@ async def test_pgvector_upsert_replaces_all_and_sizes_vector(
 ) -> None:
     conn = _pg_connection()
     connect = AsyncMock(return_value=conn)
-    monkeypatch.setattr("heimdall.rag.store.asyncpg.connect", connect)
+    monkeypatch.setattr(
+        "heimdall.infrastructure.store.pgvector.asyncpg.connect", connect
+    )
     store = PgVectorStore(DSN)
     chunks = [Chunk(text="tunnel body", source="runbooks/tunnel.md")]
     await store.upsert(chunks, FakeEmbedder())
@@ -125,7 +132,9 @@ async def test_pgvector_upsert_delete_and_insert_run_in_transaction(
     conn.execute = AsyncMock(side_effect=execute)
     conn.executemany = AsyncMock(side_effect=executemany)
     connect = AsyncMock(return_value=conn)
-    monkeypatch.setattr("heimdall.rag.store.asyncpg.connect", connect)
+    monkeypatch.setattr(
+        "heimdall.infrastructure.store.pgvector.asyncpg.connect", connect
+    )
     store = PgVectorStore(DSN)
     await store.upsert(
         [Chunk(text="tunnel body", source="runbooks/tunnel.md")],
@@ -144,14 +153,16 @@ async def test_pgvector_search_uses_cosine_distance(
     row = MagicMock()
     row.__getitem__.side_effect = lambda key: {
         "source": "runbooks/tunnel.md",
-        "body": "sing-box restart",
+        "body": "3x-ui restart",
     }[key]
     conn.fetch = AsyncMock(return_value=[row])
     connect = AsyncMock(return_value=conn)
-    monkeypatch.setattr("heimdall.rag.store.asyncpg.connect", connect)
+    monkeypatch.setattr(
+        "heimdall.infrastructure.store.pgvector.asyncpg.connect", connect
+    )
     store = PgVectorStore(DSN)
     hits = await store.search(TUNNEL_QUERY, FakeEmbedder(), k=3)
-    assert hits == [Chunk(text="sing-box restart", source="runbooks/tunnel.md")]
+    assert hits == [Chunk(text="3x-ui restart", source="runbooks/tunnel.md")]
     fetch_sql = conn.fetch.await_args.args[0]
     assert "<=>" in fetch_sql
     assert conn.fetch.await_args.args[2] == 3

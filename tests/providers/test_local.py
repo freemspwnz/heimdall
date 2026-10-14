@@ -1,7 +1,8 @@
 from typing import Any
 
 import pytest
-from heimdall.providers import EmbeddingsUnavailable, LocalEmbedder
+from heimdall.application.exceptions import EmbeddingsUnavailable
+from heimdall.infrastructure.embedders import LocalEmbedder
 
 
 class _FakeModel:
@@ -60,6 +61,8 @@ def test_local_embedder_missing_package_raises(
     def boom(model_name: str) -> object:
         raise EmbeddingsUnavailable("sentence-transformers is not installed")
 
-    monkeypatch.setattr("heimdall.providers.local._load_sentence_transformer", boom)
+    monkeypatch.setattr(
+        "heimdall.infrastructure.embedders.local._load_sentence_transformer", boom
+    )
     with pytest.raises(EmbeddingsUnavailable, match="sentence-transformers"):
         LocalEmbedder(model_name="intfloat/multilingual-e5-base")

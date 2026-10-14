@@ -1,7 +1,7 @@
 import io
 
-from heimdall.channels import CliChannel
-from heimdall.models import Action
+from heimdall.domain.models import Action
+from heimdall.infrastructure.channels import CliChannel
 
 ACTION = Action(
     tool="restart",

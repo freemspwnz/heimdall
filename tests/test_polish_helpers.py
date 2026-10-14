@@ -2,10 +2,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import asyncpg
 import pytest
-from heimdall.constants import MAX_OBSERVATION_LINES
-from heimdall.graph.nodes import _tail
-from heimdall.providers import FakeEmbedder
-from heimdall.rag.store import PgVectorStore
+from heimdall.infrastructure.constants import MAX_OBSERVATION_LINES
+from heimdall.infrastructure.embedders import FakeEmbedder
+from heimdall.infrastructure.graph.tools.dispatcher import _tail
+from heimdall.infrastructure.store import PgVectorStore
 
 
 def test_tail_clamps_to_observation_limit() -> None:
@@ -35,7 +35,10 @@ async def test_pg_empty_upsert_deletes_existing_rows() -> None:
         )
     )
 
-    with patch("heimdall.rag.store.asyncpg.connect", AsyncMock(return_value=conn)):
+    with patch(
+        "heimdall.infrastructure.store.pgvector.asyncpg.connect",
+        AsyncMock(return_value=conn),
+    ):
         store = PgVectorStore("postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall")
         await store.upsert([], FakeEmbedder())
 
@@ -51,7 +54,10 @@ async def test_pg_empty_upsert_ignores_missing_table() -> None:
     conn.execute = AsyncMock(side_effect=asyncpg.UndefinedTableError("chunks"))
     conn.close = AsyncMock()
 
-    with patch("heimdall.rag.store.asyncpg.connect", AsyncMock(return_value=conn)):
+    with patch(
+        "heimdall.infrastructure.store.pgvector.asyncpg.connect",
+        AsyncMock(return_value=conn),
+    ):
         store = PgVectorStore("postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall")
         await store.upsert([], FakeEmbedder())
 

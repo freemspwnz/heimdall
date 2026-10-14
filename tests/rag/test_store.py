@@ -1,6 +1,7 @@
 import pytest
-from heimdall.providers import FakeEmbedder
-from heimdall.rag import InMemoryVectorStore, chunk_markdown
+from heimdall.application.use_cases.rag import chunk_markdown
+from heimdall.infrastructure.embedders import FakeEmbedder
+from heimdall.infrastructure.store import InMemoryVectorStore
 
 POSTGRES_QUERY = "Что с postgres?"  # noqa: RUF001
 

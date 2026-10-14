@@ -2,7 +2,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from heimdall.tools import DockerClient
+from heimdall.infrastructure.aiohttp import DockerClient
 
 JsonBody = dict[str, object] | list[object]
 

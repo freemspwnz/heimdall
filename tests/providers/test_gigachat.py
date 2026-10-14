@@ -2,17 +2,12 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from heimdall.models import ChatMessage, ToolCall, ToolSpec
-from heimdall.providers import (
-    ChatUnavailable,
-    EmbeddingsUnavailable,
-    FakeChatModel,
-    FakeEmbedder,
-    GigaChatChatModel,
-    GigaChatEmbedder,
-    ScriptedTurn,
-)
-from heimdall.settings import Settings
+from heimdall.application.exceptions import ChatUnavailable, EmbeddingsUnavailable
+from heimdall.application.models import ChatMessage, ToolCall, ToolSpec
+from heimdall.infrastructure.aiohttp import GigaChatClient
+from heimdall.infrastructure.embedders import FakeEmbedder, GigaChatEmbedder
+from heimdall.infrastructure.llms import FakeChatModel, GigaChatChatModel, ScriptedTurn
+from heimdall.infrastructure.settings import Settings
 
 
 def _settings() -> Settings:
@@ -39,6 +34,22 @@ def _session(posts: list[MagicMock]) -> MagicMock:
     session = MagicMock()
     session.post = MagicMock(side_effect=posts)
     return session
+
+
+def _model(
+    settings: Settings,
+    posts: list[MagicMock],
+) -> tuple[GigaChatChatModel, MagicMock]:
+    session = _session(posts)
+    return GigaChatChatModel(settings, GigaChatClient(settings, session)), session
+
+
+def _embedder(
+    settings: Settings,
+    posts: list[MagicMock],
+) -> tuple[GigaChatEmbedder, MagicMock]:
+    session = _session(posts)
+    return GigaChatEmbedder(settings, GigaChatClient(settings, session)), session
 
 
 @pytest.mark.asyncio
@@ -98,8 +109,7 @@ async def test_gigachat_chat_parses_tool_calls_after_oauth() -> None:
         200,
         {"choices": [{"message": {"content": "ok"}}]},
     )
-    session = _session([oauth, chat, chat_again])
-    model = GigaChatChatModel(settings, session)
+    model, session = _model(settings, [oauth, chat, chat_again])
     tools = [
         ToolSpec(
             name="docker_inspect",
@@ -153,13 +163,13 @@ async def test_gigachat_chat_parses_tool_calls_after_oauth() -> None:
 @pytest.mark.asyncio
 async def test_gigachat_serializes_investigate_history_as_native_functions() -> None:
     settings = _settings()
-    session = _session(
+    model, session = _model(
+        settings,
         [
             _response(200, {"access_token": "tok-1"}),
             _response(200, {"choices": [{"message": {"content": "ok"}}]}),
-        ]
+        ],
     )
-    model = GigaChatChatModel(settings, session)
     messages = [
         ChatMessage(role="user", content="q"),
         ChatMessage(
@@ -198,13 +208,13 @@ async def test_gigachat_serializes_investigate_history_as_native_functions() -> 
 @pytest.mark.asyncio
 async def test_gigachat_chat_503_raises_chat_unavailable() -> None:
     settings = _settings()
-    session = _session(
+    model, session = _model(
+        settings,
         [
             _response(200, {"access_token": "tok-1"}),
             _response(503, "busy"),
-        ]
+        ],
     )
-    model = GigaChatChatModel(settings, session)
     with pytest.raises(ChatUnavailable):
         await model.complete([ChatMessage(role="user", content="q")])
     assert session.post.call_args_list[1].args[0].endswith("/chat/completions")
@@ -213,8 +223,7 @@ async def test_gigachat_chat_503_raises_chat_unavailable() -> None:
 @pytest.mark.asyncio
 async def test_gigachat_oauth_failure_raises_chat_unavailable() -> None:
     settings = _settings()
-    session = _session([_response(401, "nope")])
-    model = GigaChatChatModel(settings, session)
+    model, session = _model(settings, [_response(401, "nope")])
     with pytest.raises(ChatUnavailable):
         await model.complete([ChatMessage(role="user", content="q")])
     assert "/oauth" in session.post.call_args.args[0]
@@ -223,7 +232,8 @@ async def test_gigachat_oauth_failure_raises_chat_unavailable() -> None:
 @pytest.mark.asyncio
 async def test_gigachat_embeddings_200_returns_vectors() -> None:
     settings = _settings()
-    session = _session(
+    embedder, session = _embedder(
+        settings,
         [
             _response(200, {"access_token": "tok-emb"}),
             _response(
@@ -236,9 +246,8 @@ async def test_gigachat_embeddings_200_returns_vectors() -> None:
                 },
             ),
             _response(200, {"data": [{"embedding": [0.5]}]}),
-        ]
+        ],
     )
-    embedder = GigaChatEmbedder(settings, session)
     vectors = await embedder.embed(["a", "b"])
     assert vectors == [[0.1, 0.2], [0.3, 0.4]]
     embed_url = session.post.call_args_list[1].args[0]
@@ -259,13 +268,13 @@ async def test_gigachat_embeddings_200_returns_vectors() -> None:
 @pytest.mark.asyncio
 async def test_gigachat_embeddings_500_raises_unavailable() -> None:
     settings = _settings()
-    session = _session(
+    embedder, _ = _embedder(
+        settings,
         [
             _response(200, {"access_token": "tok-emb"}),
             _response(500, "boom"),
-        ]
+        ],
     )
-    embedder = GigaChatEmbedder(settings, session)
     with pytest.raises(EmbeddingsUnavailable):
         await embedder.embed(["x"])
 
@@ -278,13 +287,13 @@ async def test_gigachat_verify_ssl_false_passes_ssl_false() -> None:
         gigachat_verify_ssl=False,
         _env_file=None,
     )
-    session = _session(
+    model, session = _model(
+        settings,
         [
             _response(200, {"access_token": "tok-1"}),
             _response(200, {"choices": [{"message": {"content": "ok"}}]}),
-        ]
+        ],
     )
-    model = GigaChatChatModel(settings, session)
     await model.complete([ChatMessage(role="user", content="q")])
     for call in session.post.call_args_list:
         assert call.kwargs["ssl"] is False
@@ -298,13 +307,13 @@ async def test_gigachat_verify_ssl_true_passes_ssl_true() -> None:
         gigachat_verify_ssl=True,
         _env_file=None,
     )
-    session = _session(
+    model, session = _model(
+        settings,
         [
             _response(200, {"access_token": "tok-1"}),
             _response(200, {"choices": [{"message": {"content": "ok"}}]}),
-        ]
+        ],
     )
-    model = GigaChatChatModel(settings, session)
     await model.complete([ChatMessage(role="user", content="q")])
     for call in session.post.call_args_list:
         assert call.kwargs["ssl"] is True
@@ -327,6 +336,6 @@ async def test_fake_embedder_keyword_bag_of_words() -> None:
     embedder = FakeEmbedder()
     vectors = await embedder.embed(["Restart postgres now", "jellyfin"])
     assert vectors[0][0] == 1.0  # postgres
-    assert vectors[0][9] == 1.0  # restart
-    assert vectors[1][8] == 1.0  # jellyfin
+    assert vectors[0][8] == 1.0  # restart
+    assert vectors[1][7] == 1.0  # jellyfin
     assert vectors[1][0] == 0.0

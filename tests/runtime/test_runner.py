@@ -5,16 +5,12 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
-from heimdall.graph import build_graph
-from heimdall.models import (
-    Action,
-    Observation,
-    ToolCall,
-)
-from heimdall.providers import FakeChatModel, FakeEmbedder, ScriptedTurn
-from heimdall.rag import InMemoryVectorStore
-from heimdall.runtime.events import RunEvent
-from heimdall.runtime.runner import AskRunner
+from heimdall.application.models import ToolCall
+from heimdall.domain.models import Action, Observation
+from heimdall.infrastructure.embedders import FakeEmbedder
+from heimdall.infrastructure.graph import AskRunner, RunEvent, build_graph
+from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
+from heimdall.infrastructure.store import InMemoryVectorStore
 from langgraph.checkpoint.memory import MemorySaver
 
 POSTGRES_QUESTION = "Что с postgres?"  # noqa: RUF001

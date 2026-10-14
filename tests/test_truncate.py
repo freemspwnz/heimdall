@@ -1,4 +1,4 @@
-from heimdall.truncate import truncate_payload
+from heimdall.infrastructure.aiohttp.utils import truncate_payload
 
 
 def test_truncate_payload_caps_lines() -> None:

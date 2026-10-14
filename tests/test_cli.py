@@ -3,14 +3,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from heimdall.cli import AppDeps, main
-from heimdall.models import ChatMessage, ChatResult, Chunk, ToolSpec
-from heimdall.providers import (
-    Embedder,
-    EmbeddingsUnavailable,
-    FakeEmbedder,
-)
-from heimdall.rag import InMemoryVectorStore
+from heimdall.application.exceptions import EmbeddingsUnavailable
+from heimdall.application.models import ChatMessage, ChatResult, ToolSpec
+from heimdall.application.protocols import Embedder
+from heimdall.domain.models import Chunk
+from heimdall.entrypoint import AppDeps, main
+from heimdall.infrastructure.embedders import FakeEmbedder
+from heimdall.infrastructure.store import InMemoryVectorStore
 from langgraph.checkpoint.memory import MemorySaver
 
 
@@ -56,7 +55,8 @@ def patch_ingest_production_deps(
     monkeypatch: pytest.MonkeyPatch, error: Exception
 ) -> None:
     monkeypatch.setattr(
-        "heimdall.cli._ingest_production_deps", lambda: ExplodingDeps(error)
+        "heimdall.entrypoint._ingest_production_deps",
+        lambda: ExplodingDeps(error),
     )
 
 
@@ -174,9 +174,9 @@ def test_ingest_uses_ingest_production_deps(monkeypatch: pytest.MonkeyPatch) -> 
         async def __aexit__(self, *exc_info: object) -> None:
             return None
 
-    monkeypatch.setattr("heimdall.cli._ingest_production_deps", lambda: Marker())
+    monkeypatch.setattr("heimdall.entrypoint._ingest_production_deps", lambda: Marker())
     monkeypatch.setattr(
-        "heimdall.cli._production_deps",
+        "heimdall.entrypoint._production_deps",
         lambda: (_ for _ in ()).throw(AssertionError("ask deps used for ingest")),
     )
 
@@ -187,7 +187,7 @@ def test_ingest_uses_ingest_production_deps(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_docker_connector_requires_unix_socket() -> None:
-    from heimdall.cli import _docker_connector
+    from heimdall.entrypoint import _docker_connector
 
     with pytest.raises(ValueError, match="unix://"):
         _docker_connector("tcp://127.0.0.1:2375")
@@ -208,9 +208,9 @@ def test_bare_heimdall_runs_client_repl(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.delenv("HEIMDALL_URL", raising=False)
     monkeypatch.delenv("GIGACHAT_CREDENTIALS", raising=False)
     monkeypatch.delenv("POSTGRES_DSN", raising=False)
-    monkeypatch.setattr("heimdall.cli.run_repl", fake_repl)
+    monkeypatch.setattr("heimdall.entrypoint.run_repl", fake_repl)
     monkeypatch.setattr(
-        "heimdall.cli.resolve_heimdall_url",
+        "heimdall.entrypoint.resolve_heimdall_url",
         lambda: "http://127.0.0.1:8080",
     )
     assert main([]) == 0
@@ -225,9 +225,9 @@ def test_cli_subcommand_runs_client_repl(monkeypatch: pytest.MonkeyPatch) -> Non
         called["url"] = base_url
         return 0
 
-    monkeypatch.setattr("heimdall.cli.run_repl", fake_repl)
+    monkeypatch.setattr("heimdall.entrypoint.run_repl", fake_repl)
     monkeypatch.setattr(
-        "heimdall.cli.resolve_heimdall_url",
+        "heimdall.entrypoint.resolve_heimdall_url",
         lambda: "http://example.test:9",
     )
     assert main(["cli"]) == 0
@@ -239,7 +239,7 @@ def test_main_with_an_unknown_command_fails() -> None:
 
 
 def test_serve_command_is_registered() -> None:
-    from heimdall.cli import _parser
+    from heimdall.entrypoint import _parser
 
     parser = _parser()
     args = parser.parse_args(["serve"])
@@ -253,6 +253,6 @@ def test_main_serve_invokes_run_serve(monkeypatch: pytest.MonkeyPatch) -> None:
         called["yes"] = True
         return 0
 
-    monkeypatch.setattr("heimdall.cli.run_serve", fake_run_serve)
+    monkeypatch.setattr("heimdall.entrypoint.run_serve", fake_run_serve)
     assert main(["serve"]) == 0
     assert called["yes"]

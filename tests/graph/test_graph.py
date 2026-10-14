@@ -3,15 +3,13 @@ import json
 from typing import Any
 
 import pytest
-from heimdall.graph import build_graph
-from heimdall.models import Chunk, Observation, ToolCall, ToolSpec
-from heimdall.providers import (
-    EmbeddingsUnavailable,
-    FakeChatModel,
-    FakeEmbedder,
-    ScriptedTurn,
-)
-from heimdall.rag import InMemoryVectorStore
+from heimdall.application.exceptions import EmbeddingsUnavailable
+from heimdall.application.models import ToolCall, ToolSpec
+from heimdall.domain.models import Chunk, Observation
+from heimdall.infrastructure.embedders import FakeEmbedder
+from heimdall.infrastructure.graph import build_graph
+from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
+from heimdall.infrastructure.store import InMemoryVectorStore
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
@@ -160,7 +158,7 @@ async def make_graph(
                 source="runbooks/postgres.md",
             ),
             Chunk(
-                text="Туннель локально это sing-box и 3x-ui.",
+                text="Туннель локально это 3x-ui.",
                 source="runbooks/tunnel.md",
             ),
         ],
@@ -485,11 +483,11 @@ async def test_tunnel_report_states_remote_vpn_was_not_inspected() -> None:
     chat = FakeChatModel(
         [
             *investigate_turns(
-                tool_call("docker_inspect", name="sing-box"),
+                tool_call("docker_inspect", name="3x-ui"),
                 tool_call("docker_logs", name="3x-ui"),
             ),
-            diagnose_turn(0.8, report="sing-box не поднял соединение."),
-            propose_turn("sing-box"),
+            diagnose_turn(0.8, report="3x-ui не поднял соединение."),
+            propose_turn("3x-ui"),
             text_turn(
                 "Было: соединения нет. Сделали: рестарт. Стало: туннель поднялся."
             ),
@@ -506,7 +504,7 @@ async def test_tunnel_report_states_remote_vpn_was_not_inspected() -> None:
     await run_until_interrupt(graph, {"question": TUNNEL_QUESTION}, cfg)
     final = await graph.ainvoke(Command(resume="yes"), cfg)
 
-    assert docker.restart_calls == ["sing-box"]
+    assert docker.restart_calls == ["3x-ui"]
     assert "удалённ" in final["report"].lower()
 
 
