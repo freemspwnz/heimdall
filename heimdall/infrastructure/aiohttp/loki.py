@@ -18,59 +18,6 @@ _QUERY_LIMIT = MAX_OBSERVATION_LINES
 _EMPTY_PAYLOAD = "no streams"
 
 
-def _since_seconds(since: str) -> float:
-    if len(since) < 2:
-        return 15 * 60
-    unit = since[-1]
-    try:
-        amount = float(since[:-1])
-    except ValueError:
-        return 15 * 60
-    multipliers = {"s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}
-    return amount * multipliers.get(unit, 60.0)
-
-
-def _entry_ts(raw: object) -> int:
-    if isinstance(raw, bool):
-        return 0
-    if isinstance(raw, int):
-        return raw
-    if isinstance(raw, str) and raw.isdigit():
-        return int(raw)
-    return 0
-
-
-def _flatten_log_lines(payload: object) -> list[str]:
-    if not isinstance(payload, dict):
-        return []
-    data = payload.get("data")
-    if not isinstance(data, dict):
-        return []
-    result = data.get("result")
-    if not isinstance(result, list):
-        return []
-    entries: list[tuple[int, str]] = []
-    for stream in result:
-        if not isinstance(stream, dict):
-            continue
-        values = stream.get("values")
-        if not isinstance(values, list):
-            continue
-        for pair in values:
-            if isinstance(pair, list) and len(pair) >= 2 and isinstance(pair[1], str):
-                entries.append((_entry_ts(pair[0]), pair[1]))
-    entries.sort(key=lambda item: item[0])
-    return [line for _, line in entries]
-
-
-def _tail_window(lines: list[str]) -> str:
-    window = lines[-MAX_OBSERVATION_LINES:]
-    text = "\n".join(window)
-    if len(text) > MAX_OBSERVATION_CHARS:
-        text = text[-MAX_OBSERVATION_CHARS:]
-    return text
-
-
 class LokiClient:
     def __init__(self, base_url: str, session: aiohttp.ClientSession) -> None:
         self._base_url = base_url.rstrip("/")
@@ -79,7 +26,7 @@ class LokiClient:
     async def query(self, logql: str, since: str = "15m") -> Observation:
         url = f"{self._base_url}{_QUERY_PATH}"
         end = time.time()
-        start = end - _since_seconds(since)
+        start = end - self._since_seconds(since)
         params: dict[str, str] = {
             "query": logql,
             "start": str(int(start * 1_000_000_000)),
@@ -107,13 +54,13 @@ class LokiClient:
                         payload="",
                         error=str(exc),
                     )
-                lines = _flatten_log_lines(parsed)
+                lines = self._flatten_log_lines(parsed)
                 if not lines:
                     return Observation(source=_SOURCE, ok=True, payload=_EMPTY_PAYLOAD)
                 return Observation(
                     source=_SOURCE,
                     ok=True,
-                    payload=truncate_payload(_tail_window(lines)),
+                    payload=truncate_payload(self._tail_window(lines)),
                 )
         except TimeoutError as exc:
             return Observation(
@@ -129,3 +76,59 @@ class LokiClient:
                 payload="",
                 error=str(exc),
             )
+
+    @staticmethod
+    def _since_seconds(since: str) -> float:
+        if len(since) < 2:
+            return 15 * 60
+        unit = since[-1]
+        try:
+            amount = float(since[:-1])
+        except ValueError:
+            return 15 * 60
+        multipliers = {"s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}
+        return amount * multipliers.get(unit, 60.0)
+
+    @staticmethod
+    def _entry_ts(raw: object) -> int:
+        if isinstance(raw, bool):
+            return 0
+        if isinstance(raw, int):
+            return raw
+        if isinstance(raw, str) and raw.isdigit():
+            return int(raw)
+        return 0
+
+    def _flatten_log_lines(self, payload: object) -> list[str]:
+        if not isinstance(payload, dict):
+            return []
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return []
+        result = data.get("result")
+        if not isinstance(result, list):
+            return []
+        entries: list[tuple[int, str]] = []
+        for stream in result:
+            if not isinstance(stream, dict):
+                continue
+            values = stream.get("values")
+            if not isinstance(values, list):
+                continue
+            for pair in values:
+                if (
+                    isinstance(pair, list)
+                    and len(pair) >= 2
+                    and isinstance(pair[1], str)
+                ):
+                    entries.append((self._entry_ts(pair[0]), pair[1]))
+        entries.sort(key=lambda item: item[0])
+        return [line for _, line in entries]
+
+    @staticmethod
+    def _tail_window(lines: list[str]) -> str:
+        window = lines[-MAX_OBSERVATION_LINES:]
+        text = "\n".join(window)
+        if len(text) > MAX_OBSERVATION_CHARS:
+            text = text[-MAX_OBSERVATION_CHARS:]
+        return text

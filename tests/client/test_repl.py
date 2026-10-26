@@ -5,19 +5,21 @@ import socket
 import threading
 import time
 from collections.abc import AsyncIterator, Callable, Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
 import uvicorn
 from heimdall.application.models import ToolCall
 from heimdall.domain.models import Observation
+from heimdall.infrastructure.aiohttp import AgentClient, make_client_session
+from heimdall.infrastructure.deps import GraphDeps
 from heimdall.infrastructure.embedders import FakeEmbedder
-from heimdall.infrastructure.graph import AskRunner, build_graph
+from heimdall.infrastructure.graph import LangGraphRunner, build_graph
 from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
 from heimdall.infrastructure.store import InMemoryVectorStore
 from heimdall.presentation.api.app import create_app
-from heimdall.presentation.client.repl import AGENT_UNAVAILABLE, ASK_FAILED, run_repl
-from heimdall.presentation.client.session import AgentClient, make_client_session
+from heimdall.presentation.cli.repl import AGENT_UNAVAILABLE, ASK_FAILED, run_repl
 from langgraph.checkpoint.memory import MemorySaver
 
 POSTGRES_QUESTION = "Что с postgres?"  # noqa: RUF001
@@ -103,13 +105,24 @@ def postgres_chat(target: str | None = "postgres") -> FakeChatModel:
 
 def _build(chat: Any, docker: FakeDocker | None = None) -> Any:
     return build_graph(
-        retriever=InMemoryVectorStore(),
-        embedder=FakeEmbedder(),
-        chat=chat,
-        docker=docker if docker is not None else FakeDocker(),  # type: ignore[arg-type]
-        loki=FakeLoki(),  # type: ignore[arg-type]
-        vm=FakeVictoriaMetrics(),  # type: ignore[arg-type]
+        deps=GraphDeps(
+            retriever=InMemoryVectorStore(),
+            embedder=FakeEmbedder(),
+            chat=chat,
+            docker=docker if docker is not None else FakeDocker(),
+            loki=FakeLoki(),
+            vm=FakeVictoriaMetrics(),
+        ),
         checkpointer=MemorySaver(),
+    )
+
+
+def _app(graph: LangGraphRunner) -> Any:
+    return create_app(
+        graph=graph,
+        store=InMemoryVectorStore(),
+        embedder=FakeEmbedder(),
+        knowledge_dir=Path("docs/knowledge"),
     )
 
 
@@ -160,10 +173,10 @@ def serve_app() -> Callable[[Any], AsyncIterator[str]]:
 async def test_client_ask_parses_report(
     serve_app: Callable[[Any], AsyncIterator[str]],
 ) -> None:
-    app = create_app(AskRunner(graph_without_proposal()))
+    app = _app(LangGraphRunner(graph_without_proposal()))
     async for base_url in serve_app(app):
         async with make_client_session() as http:
-            client = AgentClient(base_url, http=http)
+            client = AgentClient(base_url, http)
             events = [e async for e in client.ask("ping")]
         assert any(e.type == "report" and e.text for e in events)
         return
@@ -174,10 +187,10 @@ async def test_two_asks_reuse_same_session(
     serve_app: Callable[[Any], AsyncIterator[str]],
 ) -> None:
     """Regression: keep-alive after SSE used to break the second ask."""
-    app = create_app(AskRunner(graph_without_proposal()))
+    app = _app(LangGraphRunner(graph_without_proposal()))
     async for base_url in serve_app(app):
         async with make_client_session() as http:
-            client = AgentClient(base_url, http=http)
+            client = AgentClient(base_url, http)
             first = [e async for e in client.ask("ping")]
             second = [e async for e in client.ask("pong")]
         assert any(e.type == "report" for e in first)
@@ -190,17 +203,17 @@ async def test_client_ask_and_resume_hitl(
     serve_app: Callable[[Any], AsyncIterator[str]],
 ) -> None:
     docker = FakeDocker()
-    app = create_app(AskRunner(graph_with_restart(docker)))
+    app = _app(LangGraphRunner(graph_with_restart(docker)))
     async for base_url in serve_app(app):
         async with make_client_session() as http:
-            client = AgentClient(base_url, http=http)
+            client = AgentClient(base_url, http)
             events = []
             async for event in client.ask(POSTGRES_QUESTION):
                 events.append(event)
                 if event.type == "hitl":
                     assert event.run_id is not None
                     assert event.action is not None
-                    await client.resume(event.run_id, "yes")
+                    await client.resume(event.run_id, True)
         assert any(e.type == "hitl" for e in events)
         assert any(e.type == "report" for e in events)
         assert docker.restart_calls == ["postgres"]
@@ -212,18 +225,19 @@ async def test_repl_confirms_hitl(
     serve_app: Callable[[Any], AsyncIterator[str]],
 ) -> None:
     docker = FakeDocker()
-    app = create_app(AskRunner(graph_with_restart(docker)))
+    app = _app(LangGraphRunner(graph_with_restart(docker)))
     answers: Iterator[str] = iter([POSTGRES_QUESTION, "exit"])
     confirms: Iterator[str] = iter(["y"])
     outputs: list[str] = []
 
     async for base_url in serve_app(app):
-        code = await run_repl(
-            base_url,
-            input_fn=lambda: next(answers),
-            confirm_fn=lambda: next(confirms),
-            output_fn=outputs.append,
-        )
+        async with make_client_session() as http:
+            code = await run_repl(
+                AgentClient(base_url, http),
+                input_fn=lambda: next(answers),
+                confirm_fn=lambda: next(confirms),
+                output_fn=outputs.append,
+            )
         assert code == 0
         assert docker.restart_calls == ["postgres"]
         joined = "\n".join(outputs)
@@ -237,11 +251,12 @@ async def test_repl_confirms_hitl(
 @pytest.mark.asyncio
 async def test_repl_unavailable_agent_returns_1() -> None:
     outputs: list[str] = []
-    code = await run_repl(
-        "http://127.0.0.1:1",
-        input_fn=lambda: "ping",
-        output_fn=outputs.append,
-    )
+    async with make_client_session() as http:
+        code = await run_repl(
+            AgentClient("http://127.0.0.1:1", http),
+            input_fn=lambda: "ping",
+            output_fn=outputs.append,
+        )
     assert code == 1
     assert AGENT_UNAVAILABLE in "\n".join(outputs)
 
@@ -252,7 +267,7 @@ async def test_repl_confirm_does_not_block_event_loop(
 ) -> None:
     """HITL confirm must not freeze asyncio (lab: second ask → ClientConnectorError)."""
     docker = FakeDocker()
-    app = create_app(AskRunner(graph_with_restart(docker)))
+    app = _app(LangGraphRunner(graph_with_restart(docker)))
     answers: Iterator[str] = iter([POSTGRES_QUESTION, "exit"])
     confirm_entered = threading.Event()
     confirm_done = threading.Event()
@@ -271,12 +286,13 @@ async def test_repl_confirm_does_not_block_event_loop(
 
     async for base_url in serve_app(app):
         watch = asyncio.create_task(watchdog())
-        code = await run_repl(
-            base_url,
-            input_fn=lambda: next(answers),
-            confirm_fn=confirm_fn,
-            output_fn=lambda _t: None,
-        )
+        async with make_client_session() as http:
+            code = await run_repl(
+                AgentClient(base_url, http),
+                input_fn=lambda: next(answers),
+                confirm_fn=confirm_fn,
+                output_fn=lambda _t: None,
+            )
         await watch
         assert code == 0
         assert progress_during_confirm == [True]
@@ -288,18 +304,19 @@ async def test_repl_hitl_then_second_ask(
     serve_app: Callable[[Any], AsyncIterator[str]],
 ) -> None:
     docker = FakeDocker()
-    app = create_app(AskRunner(graph_with_restart(docker)))
+    app = _app(LangGraphRunner(graph_with_restart(docker)))
     answers: Iterator[str] = iter([POSTGRES_QUESTION, "ping", "exit"])
     confirms: Iterator[str] = iter(["n", "n"])
     outputs: list[str] = []
 
     async for base_url in serve_app(app):
-        code = await run_repl(
-            base_url,
-            input_fn=lambda: next(answers),
-            confirm_fn=lambda: next(confirms),
-            output_fn=outputs.append,
-        )
+        async with make_client_session() as http:
+            code = await run_repl(
+                AgentClient(base_url, http),
+                input_fn=lambda: next(answers),
+                confirm_fn=lambda: next(confirms),
+                output_fn=outputs.append,
+            )
         assert code == 0
         assert docker.restart_calls == []
         # two full runs should each emit a final report line
@@ -313,14 +330,14 @@ async def test_repl_connector_error_after_start_continues(
     serve_app: Callable[[Any], AsyncIterator[str]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = create_app(AskRunner(graph_without_proposal()))
+    app = _app(LangGraphRunner(graph_without_proposal()))
     outputs: list[str] = []
     answers: Iterator[str] = iter(["ping", "pong", "exit"])
     call_count = {"n": 0}
 
-    from heimdall.presentation.client import session as session_mod
+    from heimdall.infrastructure.aiohttp import cli as cli_mod
 
-    original_ask = session_mod.AgentClient.ask
+    original_ask = cli_mod.AgentClient.ask
 
     async def flaky_ask(self: AgentClient, question: str) -> AsyncIterator[Any]:
         call_count["n"] += 1
@@ -329,14 +346,15 @@ async def test_repl_connector_error_after_start_continues(
         async for event in original_ask(self, question):
             yield event
 
-    monkeypatch.setattr(session_mod.AgentClient, "ask", flaky_ask)
+    monkeypatch.setattr(cli_mod.AgentClient, "ask", flaky_ask)
 
     async for base_url in serve_app(app):
-        code = await run_repl(
-            base_url,
-            input_fn=lambda: next(answers),
-            output_fn=outputs.append,
-        )
+        async with make_client_session() as http:
+            code = await run_repl(
+                AgentClient(base_url, http),
+                input_fn=lambda: next(answers),
+                output_fn=outputs.append,
+            )
         assert code == 0
         joined = "\n".join(outputs)
         assert AGENT_UNAVAILABLE not in joined

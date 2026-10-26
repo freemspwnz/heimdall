@@ -1,12 +1,23 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 
-from heimdall.infrastructure.graph import AskRunner
+from heimdall.application.protocols import Embedder, Graph, VectorStore
 
 from .routes import router
 
 
-def create_app(runner: AskRunner) -> FastAPI:
+def create_app(
+    *,
+    graph: Graph,
+    store: VectorStore,
+    embedder: Embedder,
+    knowledge_dir: Path,
+) -> FastAPI:
     app = FastAPI()
-    app.state.runner = runner
+    app.state.graph = graph
+    app.state.store = store
+    app.state.embedder = embedder
+    app.state.knowledge_dir = knowledge_dir
     app.include_router(router)
     return app

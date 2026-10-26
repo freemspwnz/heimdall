@@ -1,14 +1,16 @@
 import asyncio
 import itertools
 import json
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 from heimdall.application.models import ToolCall
 from heimdall.domain.models import Observation
+from heimdall.infrastructure.deps import GraphDeps
 from heimdall.infrastructure.embedders import FakeEmbedder
-from heimdall.infrastructure.graph import AskRunner, build_graph
+from heimdall.infrastructure.graph import LangGraphRunner, build_graph
 from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
 from heimdall.infrastructure.store import InMemoryVectorStore
 from heimdall.presentation.api.app import create_app
@@ -98,13 +100,24 @@ def postgres_chat(target: str | None = "postgres") -> FakeChatModel:
 
 def _build(chat: Any, docker: FakeDocker | None = None) -> Any:
     return build_graph(
-        retriever=InMemoryVectorStore(),
-        embedder=FakeEmbedder(),
-        chat=chat,
-        docker=docker if docker is not None else FakeDocker(),  # type: ignore[arg-type]
-        loki=FakeLoki(),  # type: ignore[arg-type]
-        vm=FakeVictoriaMetrics(),  # type: ignore[arg-type]
+        deps=GraphDeps(
+            retriever=InMemoryVectorStore(),
+            embedder=FakeEmbedder(),
+            chat=chat,
+            docker=docker if docker is not None else FakeDocker(),
+            loki=FakeLoki(),
+            vm=FakeVictoriaMetrics(),
+        ),
         checkpointer=MemorySaver(),
+    )
+
+
+def _app(graph: LangGraphRunner) -> Any:
+    return create_app(
+        graph=graph,
+        store=InMemoryVectorStore(),
+        embedder=FakeEmbedder(),
+        knowledge_dir=Path("docs/knowledge"),
     )
 
 
@@ -125,7 +138,7 @@ def graph_with_restart(docker: FakeDocker) -> Any:
 
 @pytest.mark.asyncio
 async def test_health() -> None:
-    app = create_app(AskRunner(graph_without_proposal()))
+    app = _app(LangGraphRunner(graph_without_proposal()))
     transport = ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         r = await client.get("/health")
@@ -135,7 +148,7 @@ async def test_health() -> None:
 
 @pytest.mark.asyncio
 async def test_ask_sse_report() -> None:
-    app = create_app(AskRunner(graph_without_proposal()))
+    app = _app(LangGraphRunner(graph_without_proposal()))
     transport = ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         async with client.stream("POST", "/v1/ask", json={"question": "ping"}) as resp:
@@ -150,8 +163,8 @@ async def test_ask_hitl_then_resume_yes() -> None:
     until the ask ASGI call finishes, so POST-from-inside-aiter_lines deadlocks.
     """
     docker = FakeDocker()
-    runner = AskRunner(graph_with_restart(docker))
-    app = create_app(runner)
+    runner = LangGraphRunner(graph_with_restart(docker))
+    app = _app(runner)
 
     async def resume_when_waiting() -> None:
         for _ in range(200):
@@ -164,7 +177,7 @@ async def test_ask_hitl_then_resume_yes() -> None:
                 ) as client:
                     r = await client.post(
                         f"/v1/runs/{run_id}/resume",
-                        json={"decision": "yes"},
+                        json={"decision": True},
                     )
                 assert r.status_code == 204
                 return
@@ -188,12 +201,12 @@ async def test_ask_hitl_then_resume_yes() -> None:
 
 @pytest.mark.asyncio
 async def test_resume_unknown_run_returns_404() -> None:
-    app = create_app(AskRunner(graph_without_proposal()))
+    app = _app(LangGraphRunner(graph_without_proposal()))
     transport = ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         r = await client.post(
             "/v1/runs/missing/resume",
-            json={"decision": "no"},
+            json={"decision": False},
         )
     assert r.status_code == 404
 
@@ -201,8 +214,8 @@ async def test_resume_unknown_run_returns_404() -> None:
 @pytest.mark.asyncio
 async def test_ask_disconnect_cancels_hitl() -> None:
     docker = FakeDocker()
-    runner = AskRunner(graph_with_restart(docker))
-    app = create_app(runner)
+    runner = LangGraphRunner(graph_with_restart(docker))
+    app = _app(runner)
 
     async def do_ask() -> None:
         transport = httpx.ASGITransport(app=app)

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from heimdall.application.exceptions import EmbeddingsUnavailable
-from heimdall.application.use_cases.rag import ingest_knowledge
+from heimdall.application.use_cases.ingest import ingest_knowledge
 from heimdall.domain.models import Chunk
 from heimdall.infrastructure.embedders import FakeEmbedder
 from heimdall.infrastructure.embedders.fake import KEYWORDS

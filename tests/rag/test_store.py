@@ -1,5 +1,5 @@
 import pytest
-from heimdall.application.use_cases.rag import chunk_markdown
+from heimdall.application.use_cases.ingest import chunk_markdown
 from heimdall.infrastructure.embedders import FakeEmbedder
 from heimdall.infrastructure.store import InMemoryVectorStore
 

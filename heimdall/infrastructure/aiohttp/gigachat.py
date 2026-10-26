@@ -5,12 +5,11 @@ from typing import ClassVar
 import aiohttp
 
 from heimdall.application.models import ToolCall
-from heimdall.application.protocols import HttpClient
 
 from ..settings import Settings
 
 
-class GigaChatClient(HttpClient):
+class GigaChatClient:
     HTTP_TIMEOUT_SECONDS: ClassVar[int] = 60
 
     def __init__(self, settings: Settings, session: aiohttp.ClientSession) -> None:

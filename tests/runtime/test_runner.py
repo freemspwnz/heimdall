@@ -5,10 +5,11 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
-from heimdall.application.models import ToolCall
+from heimdall.application.models import RunEvent, ToolCall
 from heimdall.domain.models import Action, Observation
+from heimdall.infrastructure.deps import GraphDeps
 from heimdall.infrastructure.embedders import FakeEmbedder
-from heimdall.infrastructure.graph import AskRunner, RunEvent, build_graph
+from heimdall.infrastructure.graph import LangGraphRunner, build_graph
 from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
 from heimdall.infrastructure.store import InMemoryVectorStore
 from langgraph.checkpoint.memory import MemorySaver
@@ -96,12 +97,14 @@ def postgres_chat(target: str | None = "postgres") -> FakeChatModel:
 
 def _build(chat: Any, docker: FakeDocker | None = None) -> Any:
     return build_graph(
-        retriever=InMemoryVectorStore(),
-        embedder=FakeEmbedder(),
-        chat=chat,
-        docker=docker if docker is not None else FakeDocker(),  # type: ignore[arg-type]
-        loki=FakeLoki(),  # type: ignore[arg-type]
-        vm=FakeVictoriaMetrics(),  # type: ignore[arg-type]
+        deps=GraphDeps(
+            retriever=InMemoryVectorStore(),
+            embedder=FakeEmbedder(),
+            chat=chat,
+            docker=docker if docker is not None else FakeDocker(),
+            loki=FakeLoki(),
+            vm=FakeVictoriaMetrics(),
+        ),
         checkpointer=MemorySaver(),
     )
 
@@ -135,22 +138,22 @@ async def _next_hitl(gen: AsyncIterator[RunEvent]) -> RunEvent:
 
 @pytest.mark.asyncio
 async def test_ask_yields_report_without_hitl() -> None:
-    runner = AskRunner(graph_without_proposal())
-    events = [e async for e in runner.ask("ping")]
+    runner = LangGraphRunner(graph_without_proposal())
+    events = [e async for e in runner.start("ping")]
     assert any(e.type == "report" and e.text for e in events)
     assert not any(e.type == "hitl" for e in events)
 
 
 @pytest.mark.asyncio
 async def test_second_ask_while_busy_yields_busy() -> None:
-    runner = AskRunner(graph_that_waits_on_hitl())
-    gen = runner.ask("first")
+    runner = LangGraphRunner(graph_that_waits_on_hitl())
+    gen = runner.start("first")
     first = await gen.__anext__()
     while first.type != "hitl":
         first = await gen.__anext__()
-    busy = [e async for e in runner.ask("second")]
+    busy = [e async for e in runner.start("second")]
     assert busy[0].type == "busy"
-    await runner.resume(first.run_id, "no")
+    await runner.decide(first.run_id, False)
     rest = [e async for e in gen]
     assert any(e.type == "report" for e in rest)
 
@@ -158,8 +161,8 @@ async def test_second_ask_while_busy_yields_busy() -> None:
 @pytest.mark.asyncio
 async def test_cancel_hitl_resumes_no_without_restart() -> None:
     docker = FakeDocker()
-    runner = AskRunner(graph_with_restart(docker))
-    gen = runner.ask(POSTGRES_QUESTION)
+    runner = LangGraphRunner(graph_with_restart(docker))
+    gen = runner.start(POSTGRES_QUESTION)
     hitl = await _next_hitl(gen)
     assert hitl.action is not None
     assert isinstance(hitl.action, Action)
@@ -173,8 +176,8 @@ async def test_cancel_hitl_resumes_no_without_restart() -> None:
 async def test_waiting_task_cancelled_resumes_no_without_restart() -> None:
     """Consumer/task cancel while awaiting HITL Future → treat as no."""
     docker = FakeDocker()
-    runner = AskRunner(graph_with_restart(docker))
-    gen = runner.ask(POSTGRES_QUESTION)
+    runner = LangGraphRunner(graph_with_restart(docker))
+    gen = runner.start(POSTGRES_QUESTION)
     hitl = await _next_hitl(gen)
     assert hitl.run_id is not None
 
@@ -193,7 +196,7 @@ async def test_waiting_task_cancelled_resumes_no_without_restart() -> None:
     assert not runner._lock.locked()
 
     # Lock released: subsequent ask is not stuck on busy forever.
-    follow_up_gen = runner.ask("ping")
+    follow_up_gen = runner.start("ping")
     first = await follow_up_gen.__anext__()
     assert first.type != "busy"
     await follow_up_gen.aclose()

@@ -1,5 +1,6 @@
 import pytest
-from heimdall.infrastructure.settings import Settings, resolve_heimdall_url
+from heimdall.infrastructure.settings import Settings
+from pydantic import ValidationError
 
 
 def test_settings_read_env(monkeypatch) -> None:
@@ -14,6 +15,7 @@ def test_settings_read_env(monkeypatch) -> None:
     assert s.loki_url == "http://127.0.0.1:3100"
     assert s.victoriametrics_url == "http://127.0.0.1:8428"
     assert s.docker_host == "unix:///var/run/docker.sock"
+    assert s.docker_socket_path == "/var/run/docker.sock"
     assert s.gigachat_base_url == "https://api.giga.chat/v1"
     assert s.embedder == "local"
     assert s.local_embedder_model == "intfloat/multilingual-e5-base"
@@ -68,10 +70,20 @@ def test_resolve_heimdall_url_default_without_credentials(
     monkeypatch.delenv("HEIMDALL_URL", raising=False)
     monkeypatch.delenv("GIGACHAT_CREDENTIALS", raising=False)
     monkeypatch.delenv("POSTGRES_DSN", raising=False)
-    assert resolve_heimdall_url() == "http://127.0.0.1:8080"
+    assert Settings.resolve_heimdall_url() == "http://127.0.0.1:8080"
 
 
 def test_resolve_heimdall_url_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("heimdall.infrastructure.settings.load_dotenv", lambda: None)
     monkeypatch.setenv("HEIMDALL_URL", "http://agent:8080")
-    assert resolve_heimdall_url() == "http://agent:8080"
+    assert Settings.resolve_heimdall_url() == "http://agent:8080"
+
+
+def test_settings_rejects_non_unix_docker_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GIGACHAT_CREDENTIALS", "secret-key")
+    monkeypatch.setenv(
+        "POSTGRES_DSN", "postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall"
+    )
+    monkeypatch.setenv("DOCKER_HOST", "tcp://127.0.0.1:2375")
+    with pytest.raises(ValidationError, match="unix://"):
+        Settings(_env_file=None)

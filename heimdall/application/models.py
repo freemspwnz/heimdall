@@ -1,4 +1,7 @@
 from dataclasses import dataclass, field
+from typing import Literal
+
+from heimdall.domain.models import Action
 
 
 @dataclass(frozen=True)
@@ -28,3 +31,14 @@ class ChatMessage:
 class ChatResult:
     content: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
+
+
+RunEventType = Literal["status", "busy", "hitl", "report", "error"]
+
+
+@dataclass(frozen=True)
+class RunEvent:
+    type: RunEventType
+    text: str = ""
+    run_id: str | None = None
+    action: Action | None = None

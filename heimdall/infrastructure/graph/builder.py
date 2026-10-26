@@ -1,13 +1,9 @@
-from collections.abc import Awaitable, Callable
-from typing import Any, Protocol
+from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from heimdall.application.protocols import ChatModel, Embedder, VectorStore
-
-from ..aiohttp import DockerClient, LokiClient, VictoriaMetricsClient
 from ..deps import GraphDeps
 from .edges import after_confirm, after_diagnose, after_propose
 from .nodes import (
@@ -19,43 +15,27 @@ from .nodes import (
     retrieve,
     verify,
 )
-from .state import GraphState, StateUpdate
-
-DepsNode = Callable[[GraphState, GraphDeps], Awaitable[StateUpdate]]
+from .state import GraphState
+from .tools import Tools
 
 CompiledGraph = CompiledStateGraph[GraphState, Any, GraphState, GraphState]
 
 
-class Node(Protocol):
-    def __call__(self, state: GraphState) -> Awaitable[StateUpdate]: ...
-
-
 def build_graph(
     *,
-    retriever: VectorStore,
-    embedder: Embedder,
-    chat: ChatModel,
-    docker: DockerClient,
-    loki: LokiClient,
-    vm: VictoriaMetricsClient,
+    deps: GraphDeps,
     checkpointer: BaseCheckpointSaver[Any],
 ) -> CompiledGraph:
-    deps = GraphDeps(
-        retriever=retriever,
-        embedder=embedder,
-        chat=chat,
-        docker=docker,
-        loki=loki,
-        vm=vm,
-    )
+    tools = Tools(deps.docker, deps.loki, deps.vm)
+
     graph: StateGraph[GraphState, Any, GraphState, GraphState] = StateGraph(GraphState)
-    graph.add_node("retrieve", _bind(retrieve, deps))
-    graph.add_node("investigate", _bind(investigate, deps))
-    graph.add_node("diagnose", _bind(diagnose, deps))
-    graph.add_node("propose", _bind(propose, deps))
+    graph.add_node("retrieve", retrieve(deps.retriever, deps.embedder))
+    graph.add_node("investigate", investigate(deps.chat, tools))
+    graph.add_node("diagnose", diagnose(deps.chat))
+    graph.add_node("propose", propose(deps.chat))
     graph.add_node("confirm", confirm)
-    graph.add_node("execute", _bind(execute, deps))
-    graph.add_node("verify", _bind(verify, deps))
+    graph.add_node("execute", execute(deps.docker))
+    graph.add_node("verify", verify(deps.chat, deps.docker))
 
     graph.add_edge(START, "retrieve")
     graph.add_edge("retrieve", "investigate")
@@ -78,11 +58,3 @@ def build_graph(
     graph.add_edge("execute", "verify")
     graph.add_edge("verify", END)
     return graph.compile(checkpointer=checkpointer)
-
-
-def _bind(node: DepsNode, deps: GraphDeps) -> Node:
-    async def run(state: GraphState) -> StateUpdate:
-        return await node(state, deps)
-
-    return run
-

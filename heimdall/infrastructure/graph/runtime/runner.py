@@ -6,22 +6,23 @@ from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
+from heimdall.application.models import RunEvent
+
 from ..builder import CompiledGraph
 from ..state import GraphState
-from .events import RunEvent
 from .state import is_interrupted, pending_action, report
 
 BUSY_TEXT = "agent is busy"
 BROKEN_PROPOSAL = "агент предложил действие, которое не удалось разобрать"
 
 
-class AskRunner:
+class LangGraphRunner:
     def __init__(self, graph: CompiledGraph) -> None:
         self._graph = graph
         self._lock = asyncio.Lock()
-        self._waiting: dict[str, asyncio.Future[Literal["yes", "no"]]] = {}
+        self._waiting: dict[str, asyncio.Future[bool]] = {}
 
-    async def ask(self, question: str) -> AsyncIterator[RunEvent]:
+    async def start(self, question: str) -> AsyncIterator[RunEvent]:
         if self._lock.locked():
             yield RunEvent(type="busy", text=BUSY_TEXT)
             return
@@ -31,7 +32,7 @@ class AskRunner:
         config: RunnableConfig = {"configurable": {"thread_id": run_id}}
         try:
             try:
-                payload: GraphState | Command[Any] = _initial_state(question)
+                payload: GraphState | Command[Any] = self._initial_state(question)
                 while True:
                     async for update in self._graph.astream(
                         payload,
@@ -66,7 +67,7 @@ class AskRunner:
                             action=action,
                         )
                         decision = await self._await_decision(run_id, decision_future)
-                        payload = Command(resume=decision)
+                        payload = Command(resume="yes" if decision else "no")
                         continue
 
                     yield RunEvent(
@@ -80,38 +81,36 @@ class AskRunner:
         finally:
             self._lock.release()
 
-    async def resume(
-        self, run_id: str, decision: Literal["yes", "no"]
-    ) -> Literal["ok", "unknown", "not_waiting"]:
+    async def decide(
+        self, run_id: str, accepted: bool
+    ) -> Literal["unknown", "not_waiting", "ok"]:
         future = self._waiting.get(run_id)
         if future is None:
             return "unknown"
         if future.done():
             return "not_waiting"
-        future.set_result(decision)
+        future.set_result(accepted)
         return "ok"
 
     async def cancel_hitl(self, run_id: str) -> None:
-        await self.resume(run_id, "no")
+        await self.decide(run_id, False)
 
-    def _register_wait(self, run_id: str) -> asyncio.Future[Literal["yes", "no"]]:
-        future: asyncio.Future[Literal["yes", "no"]] = (
-            asyncio.get_running_loop().create_future()
-        )
+    def _register_wait(self, run_id: str) -> asyncio.Future[bool]:
+        future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
         self._waiting[run_id] = future
         return future
 
     async def _await_decision(
         self,
         run_id: str,
-        future: asyncio.Future[Literal["yes", "no"]],
-    ) -> Literal["yes", "no"]:
+        future: asyncio.Future[bool],
+    ) -> bool:
         try:
             return await future
         except asyncio.CancelledError:
             if not future.done():
-                future.set_result("no")
-            return "no"
+                future.set_result(False)
+            return False
         finally:
             self._waiting.pop(run_id, None)
 
@@ -124,17 +123,17 @@ class AskRunner:
             state["__interrupt__"] = list(interrupts)
         return state
 
-
-def _initial_state(question: str) -> GraphState:
-    return GraphState(
-        question=question,
-        retrieved_chunks=[],
-        observations=[],
-        hypothesis=None,
-        confidence=None,
-        investigate_rounds=0,
-        proposed_action=None,
-        human_decision=None,
-        execution_result=None,
-        report=None,
-    )
+    @staticmethod
+    def _initial_state(question: str) -> GraphState:
+        return GraphState(
+            question=question,
+            retrieved_chunks=[],
+            observations=[],
+            hypothesis=None,
+            confidence=None,
+            investigate_rounds=0,
+            proposed_action=None,
+            human_decision=None,
+            execution_result=None,
+            report=None,
+        )

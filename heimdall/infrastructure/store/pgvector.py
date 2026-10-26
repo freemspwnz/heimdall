@@ -18,6 +18,7 @@ class PgVectorStore:
             await conn.close()
 
     async def upsert(self, chunks: list[Chunk], embedder: Embedder) -> None:
+        await self.ensure_schema()
         if not chunks:
             conn = await asyncpg.connect(self._dsn)
             try:

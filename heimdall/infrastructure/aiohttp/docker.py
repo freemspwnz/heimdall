@@ -36,61 +36,8 @@ def _ok(payload: str) -> Observation:
     return Observation(source=_SOURCE, ok=True, payload=payload)
 
 
-def _format_ps_line(item: object) -> str | None:
-    if not isinstance(item, dict):
-        return None
-    names = item.get("Names")
-    name = ""
-    if isinstance(names, list) and names and isinstance(names[0], str):
-        name = names[0].lstrip("/")
-    state = item.get("State")
-    status = item.get("Status")
-    state_s = state if isinstance(state, str) else ""
-    status_s = status if isinstance(status, str) else ""
-    parts = [part for part in (name, state_s, status_s) if part]
-    if not parts:
-        return None
-    return " ".join(parts)
-
-
-def _looks_multiplexed(raw: bytes) -> bool:
-    if len(raw) < 8:
-        return False
-    if raw[0] not in (1, 2):
-        return False
-    if raw[1:4] != b"\x00\x00\x00":
-        return False
-    size = int.from_bytes(raw[4:8], "big")
-    return 8 + size <= len(raw)
-
-
-def _demux_logs(raw: bytes) -> str:
-    chunks: list[bytes] = []
-    offset = 0
-    while offset + 8 <= len(raw):
-        size = int.from_bytes(raw[offset + 4 : offset + 8], "big")
-        start = offset + 8
-        end = start + size
-        if end > len(raw):
-            break
-        chunks.append(raw[start:end])
-        offset = end
-    if not chunks:
-        return raw.decode("utf-8", errors="replace")
-    return b"".join(chunks).decode("utf-8", errors="replace")
-
-
-def _logs_text(raw: bytes) -> str:
-    if _looks_multiplexed(raw):
-        return _demux_logs(raw)
-    return raw.decode("utf-8", errors="replace")
-
-
 class DockerClient:
     def __init__(self, docker_host: str, session: aiohttp.ClientSession) -> None:
-        if not docker_host.startswith("unix://"):
-            msg = f"DOCKER_HOST must be a unix:// socket, got {docker_host!r}"
-            raise ValueError(msg)
         self._docker_host = docker_host
         self._session = session
 
@@ -111,7 +58,7 @@ class DockerClient:
                     return _fail("unexpected docker ps payload")
                 lines: list[str] = []
                 for item in parsed:
-                    line = _format_ps_line(item)
+                    line = self._format_ps_line(item)
                     if line is not None:
                         lines.append(line)
                 return _ok(truncate_payload("\n".join(lines)))
@@ -148,7 +95,7 @@ class DockerClient:
                     text = await resp.text()
                     return _fail(f"{resp.status} {truncate_payload(text)}")
                 raw = await resp.read()
-                return _ok(truncate_payload(_logs_text(raw)))
+                return _ok(truncate_payload(self._logs_text(raw)))
         except TimeoutError as exc:
             return _fail(str(exc) or "timeout")
         except aiohttp.ClientError as exc:
@@ -169,3 +116,52 @@ class DockerClient:
             return _fail(str(exc) or "timeout")
         except aiohttp.ClientError as exc:
             return _fail(str(exc))
+
+    @staticmethod
+    def _format_ps_line(item: object) -> str | None:
+        if not isinstance(item, dict):
+            return None
+        names = item.get("Names")
+        name = ""
+        if isinstance(names, list) and names and isinstance(names[0], str):
+            name = names[0].lstrip("/")
+        state = item.get("State")
+        status = item.get("Status")
+        state_s = state if isinstance(state, str) else ""
+        status_s = status if isinstance(status, str) else ""
+        parts = [part for part in (name, state_s, status_s) if part]
+        if not parts:
+            return None
+        return " ".join(parts)
+
+    @staticmethod
+    def _looks_multiplexed(raw: bytes) -> bool:
+        if len(raw) < 8:
+            return False
+        if raw[0] not in (1, 2):
+            return False
+        if raw[1:4] != b"\x00\x00\x00":
+            return False
+        size = int.from_bytes(raw[4:8], "big")
+        return 8 + size <= len(raw)
+
+    @staticmethod
+    def _demux_logs(raw: bytes) -> str:
+        chunks: list[bytes] = []
+        offset = 0
+        while offset + 8 <= len(raw):
+            size = int.from_bytes(raw[offset + 4 : offset + 8], "big")
+            start = offset + 8
+            end = start + size
+            if end > len(raw):
+                break
+            chunks.append(raw[start:end])
+            offset = end
+        if not chunks:
+            return raw.decode("utf-8", errors="replace")
+        return b"".join(chunks).decode("utf-8", errors="replace")
+
+    def _logs_text(self, raw: bytes) -> str:
+        if self._looks_multiplexed(raw):
+            return self._demux_logs(raw)
+        return raw.decode("utf-8", errors="replace")

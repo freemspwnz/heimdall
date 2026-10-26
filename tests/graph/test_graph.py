@@ -6,6 +6,7 @@ import pytest
 from heimdall.application.exceptions import EmbeddingsUnavailable
 from heimdall.application.models import ToolCall, ToolSpec
 from heimdall.domain.models import Chunk, Observation
+from heimdall.infrastructure.deps import GraphDeps
 from heimdall.infrastructure.embedders import FakeEmbedder
 from heimdall.infrastructure.graph import build_graph
 from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
@@ -165,12 +166,14 @@ async def make_graph(
         FakeEmbedder(),
     )
     return build_graph(
-        retriever=store,
-        embedder=embedder if embedder is not None else FakeEmbedder(),
-        chat=chat,
-        docker=docker,
-        loki=loki,
-        vm=vm,
+        deps=GraphDeps(
+            retriever=store,
+            embedder=embedder if embedder is not None else FakeEmbedder(),
+            chat=chat,
+            docker=docker,
+            loki=loki,
+            vm=vm,
+        ),
         checkpointer=MemorySaver(),
     )
 

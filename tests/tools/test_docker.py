@@ -23,11 +23,7 @@ def _response(status: int, body: JsonBody | str | bytes) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_docker_client_rejects_non_unix_host() -> None:
-    session = MagicMock()
-    with pytest.raises(ValueError, match="unix://"):
-        DockerClient("tcp://127.0.0.1:2375", session)
-
+async def test_docker_ps_formats_containers() -> None:
     session = MagicMock()
     session.get = MagicMock(
         return_value=_response(

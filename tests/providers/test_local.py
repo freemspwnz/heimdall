@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 from heimdall.application.exceptions import EmbeddingsUnavailable
-from heimdall.infrastructure.embedders import LocalEmbedder
+from heimdall.infrastructure.embedders import LocalEmbedder, load_sentence_transformer
 
 
 class _FakeModel:
@@ -55,14 +55,24 @@ async def test_local_embedder_empty_input_returns_empty() -> None:
     assert model.calls == []
 
 
-def test_local_embedder_missing_package_raises(
+def test_load_sentence_transformer_missing_package_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def boom(model_name: str) -> object:
-        raise EmbeddingsUnavailable("sentence-transformers is not installed")
+    import builtins
 
-    monkeypatch.setattr(
-        "heimdall.infrastructure.embedders.local._load_sentence_transformer", boom
-    )
+    real_import = builtins.__import__
+
+    def fake_import(
+        name: str,
+        globals: dict[str, object] | None = None,
+        locals: dict[str, object] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> object:
+        if name == "sentence_transformers":
+            raise ImportError("missing")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
     with pytest.raises(EmbeddingsUnavailable, match="sentence-transformers"):
-        LocalEmbedder(model_name="intfloat/multilingual-e5-base")
+        load_sentence_transformer("intfloat/multilingual-e5-base")

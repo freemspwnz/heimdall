@@ -1,5 +1,5 @@
 from .chunker import chunk_markdown
-from .ingest import ingest_knowledge
+from .use_case import ingest_knowledge
 
 __all__ = [
     "chunk_markdown",

@@ -1,30 +1,21 @@
 import asyncio
-from typing import Any, Protocol
+
+from sentence_transformers import SentenceTransformer
 
 from heimdall.application.exceptions import EmbeddingsUnavailable
 
-DEFAULT_LOCAL_MODEL = "intfloat/multilingual-e5-base"
 _QUERY_PREFIX = "query: "
 _PASSAGE_PREFIX = "passage: "
 
 
-class _Encodable(Protocol):
-    def encode(
-        self,
-        texts: list[str],
-        *,
-        normalize_embeddings: bool = False,
-    ) -> Any: ...
-
-
-def _load_sentence_transformer(model_name: str) -> _Encodable:
+def load_sentence_transformer(model_name: str) -> SentenceTransformer:
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:
         raise EmbeddingsUnavailable(
             "sentence-transformers is not installed; run: uv sync --group embeddings"
         ) from exc
-    return SentenceTransformer(model_name)  # type: ignore[no-any-return]
+    return SentenceTransformer(model_name)
 
 
 class LocalEmbedder:
@@ -35,13 +26,10 @@ class LocalEmbedder:
 
     def __init__(
         self,
-        model_name: str = DEFAULT_LOCAL_MODEL,
         *,
-        model: _Encodable | None = None,
+        model: SentenceTransformer,
     ) -> None:
-        self._model = (
-            model if model is not None else _load_sentence_transformer(model_name)
-        )
+        self._model = model
 
     async def embed(
         self,

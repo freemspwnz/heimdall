@@ -1,13 +1,13 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Literal, cast
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from heimdall.infrastructure.graph import AskRunner, RunEvent
+from heimdall.application.models import RunEvent
+from heimdall.application.use_cases import decide, ingest_knowledge, investigate
 
 router = APIRouter()
 
@@ -17,7 +17,7 @@ class AskBody(BaseModel):
 
 
 class ResumeBody(BaseModel):
-    decision: Literal["yes", "no"]
+    decision: bool
 
 
 def _sse(event: RunEvent) -> bytes:
@@ -36,30 +36,35 @@ def _sse(event: RunEvent) -> bytes:
     ).encode()
 
 
-def _runner(request: Request) -> AskRunner:
-    return cast(AskRunner, request.app.state.runner)
-
-
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.post("/v1/ingest")
+async def ingest(request: Request) -> dict[str, int]:
+    count = await ingest_knowledge(
+        request.app.state.knowledge_dir,
+        request.app.state.store,
+        request.app.state.embedder,
+    )
+    return {"count": count}
+
+
 @router.post("/v1/ask")
 async def ask(body: AskBody, request: Request) -> StreamingResponse:
-    runner = _runner(request)
 
     async def event_stream() -> AsyncIterator[bytes]:
         run_id: str | None = None
         try:
-            async for event in runner.ask(body.question):
+            async for event in investigate(body.question, request.app.state.graph):
                 if event.run_id is not None:
                     run_id = event.run_id
                 yield _sse(event)
         except asyncio.CancelledError:
             # Client disconnected mid-stream (often while waiting on HITL).
             if run_id is not None:
-                await runner.cancel_hitl(run_id)
+                await request.app.state.graph.cancel_hitl(run_id)
             raise
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
@@ -67,8 +72,7 @@ async def ask(body: AskBody, request: Request) -> StreamingResponse:
 
 @router.post("/v1/runs/{run_id}/resume", status_code=204)
 async def resume_run(run_id: str, body: ResumeBody, request: Request) -> Response:
-    runner = _runner(request)
-    result = await runner.resume(run_id, body.decision)
+    result = await decide(run_id, body.decision, request.app.state.graph)
     if result == "unknown":
         raise HTTPException(status_code=404, detail="unknown run")
     if result == "not_waiting":

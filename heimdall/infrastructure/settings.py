@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,8 +31,24 @@ class Settings(BaseSettings):
     heimdall_listen: str = "0.0.0.0:8080"
     heimdall_url: str = "http://127.0.0.1:8080"
 
+    @staticmethod
+    def resolve_heimdall_url() -> str:
+        """Client-side URL only — does not require GigaChat/Postgres credentials."""
+        load_dotenv()
+        return os.environ.get("HEIMDALL_URL", "http://127.0.0.1:8080")
 
-def resolve_heimdall_url() -> str:
-    """Client-side URL only — does not require GigaChat/Postgres credentials."""
-    load_dotenv()
-    return os.environ.get("HEIMDALL_URL", "http://127.0.0.1:8080")
+    @staticmethod
+    def parse_listen(listen: str) -> tuple[str, int]:
+        host, _, port_s = listen.rpartition(":")
+        return host, int(port_s)
+
+    @field_validator("docker_host")
+    @classmethod
+    def validate_docker_host(cls, v: str) -> str:
+        if not v.startswith("unix://"):
+            raise ValueError("DOCKER_HOST must be a unix:// socket")
+        return v
+
+    @property
+    def docker_socket_path(self) -> str:
+        return self.docker_host.removeprefix("unix://")
