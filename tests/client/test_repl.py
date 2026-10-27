@@ -249,6 +249,33 @@ async def test_repl_confirms_hitl(
 
 
 @pytest.mark.asyncio
+async def test_repl_cyrillic_yes_does_not_restart(
+    serve_app: Callable[[Any], AsyncIterator[str]],
+) -> None:
+    docker = FakeDocker()
+    app = _app(LangGraphRunner(graph_with_restart(docker)))
+    answers: Iterator[str] = iter([POSTGRES_QUESTION, "exit"])
+    confirms: Iterator[str] = iter(["да"])
+    outputs: list[str] = []
+
+    async for base_url in serve_app(app):
+        async with make_client_session() as http:
+            code = await run_repl(
+                AgentClient(base_url, http),
+                input_fn=lambda: next(answers),
+                confirm_fn=lambda: next(confirms),
+                output_fn=outputs.append,
+            )
+        assert code == 0
+        assert docker.restart_calls == []
+        joined = "\n".join(outputs)
+        assert "postgres" in joined.lower()
+        assert "Команду не применял." in joined
+        assert "Стало: healthy." not in joined
+        return
+
+
+@pytest.mark.asyncio
 async def test_repl_unavailable_agent_returns_1() -> None:
     outputs: list[str] = []
     async with make_client_session() as http:
