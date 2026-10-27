@@ -134,6 +134,14 @@ async def test_later_inspect_of_the_same_container_wins() -> None:
 
 
 @pytest.mark.asyncio
+async def test_any_container_outside_never_restart_can_be_proposed() -> None:
+    update = await _propose([_inspect("jellyfin", _DOWN)], target="jellyfin")
+    action = update["proposed_action"]
+    assert isinstance(action, dict)
+    assert action["target"] == "jellyfin"
+
+
+@pytest.mark.asyncio
 async def test_forbidden_target_is_dropped_even_when_inspect_is_down() -> None:
     update = await _propose([_inspect("postgres", _DOWN)], target="postgres")
     assert update["proposed_action"] is None

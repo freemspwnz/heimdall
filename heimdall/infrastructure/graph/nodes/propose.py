@@ -6,7 +6,7 @@ from heimdall.application.models import ChatMessage
 from heimdall.application.protocols import ChatModel
 from heimdall.domain.models import Action
 
-from ...constants import NEVER_RESTART, RESTART_ALLOWLIST
+from ...constants import NEVER_RESTART
 from ..prompts import PROPOSE_SYSTEM
 from ..state import GraphState, StateUpdate
 from ..tools.registry import DOCKER_INSPECT
@@ -48,7 +48,7 @@ class propose:
         if tool != "restart":
             return None
         target = _text(value.get("target"))
-        if target not in RESTART_ALLOWLIST or target in NEVER_RESTART:
+        if not target or target in NEVER_RESTART:
             return None
         return Action(
             tool=tool,

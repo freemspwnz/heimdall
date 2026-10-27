@@ -510,7 +510,7 @@ async def test_tunnel_report_states_remote_vpn_was_not_inspected() -> None:
 
 
 @pytest.mark.asyncio
-async def test_traefik_proposal_outside_allowlist_is_dropped() -> None:
+async def test_forbidden_restart_is_dropped() -> None:
     docker = FakeDocker()
     chat = FakeChatModel(
         [

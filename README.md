@@ -104,7 +104,7 @@ In the client REPL (`heimdall>`):
 
 ### HITL
 
-If Heimdall proposes a restart, it prints `docker restart <name>` with reason and risk, then waits on stdin. Type `y` or `yes` to apply; anything else (including empty input) skips the restart. Only allowlisted containers can be restarted (`postgres`, `traefik`, `whoami`, `3x-ui`). `vaultwarden` is never restartable.
+If Heimdall proposes a restart, it prints `docker restart <name>` with reason and risk, then waits on stdin. Type `y` or `yes` to apply; anything else (including empty input) skips the restart. Any container can be restarted except `postgres`, `redis`, `traefik`, `3x-ui`, and `adguardhome`. The proposal also requires this turn's `docker inspect` to show that container as down.
 
 ## Tests and quality gate
 

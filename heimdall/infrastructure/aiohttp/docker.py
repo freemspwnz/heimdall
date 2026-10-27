@@ -8,7 +8,6 @@ from heimdall.domain.models import Observation
 from ..constants import (
     HTTP_TIMEOUT_SECONDS,
     NEVER_RESTART,
-    RESTART_ALLOWLIST,
 )
 from .utils import truncate_payload
 
@@ -102,8 +101,8 @@ class DockerClient:
             return _fail(str(exc))
 
     async def restart(self, name: str) -> Observation:
-        if name not in RESTART_ALLOWLIST or name in NEVER_RESTART:
-            return _fail(f"{name} is not on the restart allowlist")
+        if not name or name in NEVER_RESTART:
+            return _fail(f"{name} restart is forbidden")
         url = _engine_url(f"/containers/{_container_segment(name)}/restart")
         timeout = _timeout()
         try:

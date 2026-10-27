@@ -1,8 +1,7 @@
-from ..constants import NEVER_RESTART, RESTART_ALLOWLIST
+from ..constants import NEVER_RESTART
 
 _ROLE = "Ты Heimdall, DevOps-агент домашней инфраструктуры на одном Docker-хосте."
 
-_ALLOWED = ", ".join(sorted(RESTART_ALLOWLIST))
 _FORBIDDEN = ", ".join(sorted(NEVER_RESTART))
 
 INVESTIGATE_SYSTEM = f"""{_ROLE}
@@ -23,8 +22,7 @@ DIAGNOSE_SYSTEM = f"""{_ROLE}
 PROPOSE_SYSTEM = f"""{_ROLE}
 Реши, есть ли безопасное действие, которое стоит предложить человеку.
 Единственное разрешённое действие - рестарт контейнера.
-Рестарт можно предлагать только для: {_ALLOWED}.
-Никогда не предлагай рестарт для: {_FORBIDDEN}.
+Рестарт допустим для любого контейнера, кроме: {_FORBIDDEN}.
 Ответь ТОЛЬКО объектом JSON, без markdown и без пояснений вокруг:
 {{"action": {{"tool": "restart", "target": "...", "reason": "...", "risk": "..."}},
  "report": "..."}}

@@ -57,7 +57,7 @@ async def test_restart_postgres_blocked_without_http() -> None:
     client = DockerClient("unix:///var/run/docker.sock", session)
     obs = await client.restart("postgres")
     assert obs.ok is False
-    assert "allowlist" in (obs.error or "").lower()
+    assert "forbidden" in (obs.error or "").lower()
     session.post.assert_not_called()
 
 
@@ -72,6 +72,18 @@ async def test_restart_vaultwarden_allowed() -> None:
     session.post.assert_called()
     url = session.post.call_args.args[0]
     assert url == "http://localhost/containers/vaultwarden/restart"
+
+
+@pytest.mark.asyncio
+async def test_restart_jellyfin_allowed() -> None:
+    session = MagicMock()
+    session.post = MagicMock(return_value=_response(204, ""))
+    client = DockerClient("unix:///var/run/docker.sock", session)
+    obs = await client.restart("jellyfin")
+    assert obs.ok is True
+    session.post.assert_called()
+    url = session.post.call_args.args[0]
+    assert url == "http://localhost/containers/jellyfin/restart"
 
 
 @pytest.mark.asyncio

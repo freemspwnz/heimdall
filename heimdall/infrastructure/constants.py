@@ -7,5 +7,4 @@ CONFIDENCE_RETRY_THRESHOLD = 0.6
 DEFAULT_CONFIDENCE = 0.7
 RETRIEVE_TOP_K = 5
 LOG_LOOKBACK = "15m"
-RESTART_ALLOWLIST = frozenset({"nextcloud", "vaultwarden", "gitea", "rest-server"})
 NEVER_RESTART = frozenset({"postgres", "redis", "traefik", "3x-ui", "adguardhome"})
