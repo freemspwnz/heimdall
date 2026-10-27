@@ -211,7 +211,7 @@ def postgres_chat() -> FakeChatModel:
     return FakeChatModel(
         [
             *investigate_turns(
-                tool_call("docker_inspect", name="postgres"),
+                tool_call("docker_inspect", name="gitea"),
                 tool_call("loki_query", query='{container="postgres"}'),
                 tool_call("vm_query", query="pg_up"),
             ),
@@ -538,7 +538,10 @@ async def test_traefik_backend_restart_is_proposed_for_gitea() -> None:
     docker = FakeDocker()
     chat = FakeChatModel(
         [
-            *investigate_turns(tool_call("docker_logs", name="traefik")),
+            *investigate_turns(
+                tool_call("docker_logs", name="traefik"),
+                tool_call("docker_inspect", name="gitea"),
+            ),
             diagnose_turn(0.8),
             propose_turn("gitea"),
             text_turn("Было: 502. Сделали: рестарт gitea. Стало: 200."),

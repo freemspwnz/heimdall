@@ -35,7 +35,11 @@ class FakeDocker:
         return Observation(source="docker", ok=True, payload="postgres running")
 
     async def inspect(self, name: str) -> Observation:
-        return Observation(source="docker", ok=True, payload='{"State": {}}')
+        return Observation(
+            source="docker",
+            ok=True,
+            payload='{"State": {"Status": "exited"}}',
+        )
 
     async def logs(self, name: str, tail: int = 100) -> Observation:
         return Observation(source="docker", ok=True, payload="FATAL: too many clients")
@@ -94,7 +98,7 @@ def propose_turn(target: str | None) -> ScriptedTurn:
 def postgres_chat(target: str | None = "gitea") -> FakeChatModel:
     return FakeChatModel(
         [
-            ScriptedTurn(tool_calls=[tool_call("docker_inspect", name="postgres")]),
+            ScriptedTurn(tool_calls=[tool_call("docker_inspect", name="gitea")]),
             ScriptedTurn(content="Факты собраны."),
             diagnose_turn(),
             propose_turn(target),
