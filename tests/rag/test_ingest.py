@@ -2,7 +2,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from heimdall.application.exceptions import EmbeddingsUnavailable
+from heimdall.application.exceptions import EmbeddingsUnavailable, KnowledgeUnavailable
 from heimdall.application.use_cases.ingest import ingest_knowledge
 from heimdall.domain.models import Chunk
 from heimdall.infrastructure.embedders import FakeEmbedder
@@ -52,6 +52,34 @@ async def test_ingest_knowledge_retrieves_tunnel_runbook() -> None:
     hits = await store.search(TUNNEL_QUERY, embedder)
     blob = " ".join(hit.text for hit in hits)
     assert "3x-ui" in blob
+
+
+@pytest.mark.asyncio
+async def test_ingest_missing_directory_keeps_existing_chunks(tmp_path: Path) -> None:
+    store = InMemoryVectorStore()
+    embedder = FakeEmbedder()
+    await store.upsert(
+        [Chunk(text="postgres restart", source="inventory.md")],
+        embedder,
+    )
+    with pytest.raises(KnowledgeUnavailable, match="not found"):
+        await ingest_knowledge(tmp_path / "missing", store, embedder)
+    assert await store.search("postgres", embedder)
+
+
+@pytest.mark.asyncio
+async def test_ingest_empty_directory_keeps_existing_chunks(tmp_path: Path) -> None:
+    store = InMemoryVectorStore()
+    embedder = FakeEmbedder()
+    await store.upsert(
+        [Chunk(text="postgres restart", source="inventory.md")],
+        embedder,
+    )
+    empty = tmp_path / "knowledge"
+    empty.mkdir()
+    with pytest.raises(KnowledgeUnavailable, match="empty"):
+        await ingest_knowledge(empty, store, embedder)
+    assert await store.search("postgres", embedder)
 
 
 @pytest.mark.asyncio

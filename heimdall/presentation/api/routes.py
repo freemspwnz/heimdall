@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from heimdall.application.exceptions import KnowledgeUnavailable
 from heimdall.application.models import RunEvent
 from heimdall.application.use_cases import decide, ingest_knowledge, investigate
 
@@ -43,11 +44,14 @@ async def health() -> dict[str, str]:
 
 @router.post("/v1/ingest")
 async def ingest(request: Request) -> dict[str, int]:
-    count = await ingest_knowledge(
-        request.app.state.knowledge_dir,
-        request.app.state.store,
-        request.app.state.embedder,
-    )
+    try:
+        count = await ingest_knowledge(
+            request.app.state.knowledge_dir,
+            request.app.state.store,
+            request.app.state.embedder,
+        )
+    except KnowledgeUnavailable as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"count": count}
 
 

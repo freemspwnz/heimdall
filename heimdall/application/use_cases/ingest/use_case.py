@@ -2,6 +2,7 @@ from pathlib import Path
 
 from heimdall.domain.models import Chunk
 
+from ...exceptions import KnowledgeUnavailable
 from ...protocols import Embedder, VectorStore
 from .chunker import chunk_markdown
 
@@ -14,6 +15,14 @@ async def ingest_knowledge(
     store: VectorStore,
     embedder: Embedder,
 ) -> int:
+    chunks = _load_chunks(knowledge_dir)
+    await store.upsert(chunks, embedder)
+    return len(chunks)
+
+
+def _load_chunks(knowledge_dir: Path) -> list[Chunk]:
+    if not knowledge_dir.is_dir():
+        raise KnowledgeUnavailable(f"knowledge directory not found: {knowledge_dir}")
     chunks: list[Chunk] = []
     inventory = knowledge_dir / _INVENTORY
     if inventory.is_file():
@@ -22,8 +31,9 @@ async def ingest_knowledge(
     if runbooks_dir.is_dir():
         for path in sorted(runbooks_dir.glob(_RUNBOOKS_GLOB)):
             chunks.extend(_chunks_from(path, knowledge_dir))
-    await store.upsert(chunks, embedder)
-    return len(chunks)
+    if not chunks:
+        raise KnowledgeUnavailable(f"knowledge directory is empty: {knowledge_dir}")
+    return chunks
 
 
 def _chunks_from(path: Path, knowledge_dir: Path) -> list[Chunk]:

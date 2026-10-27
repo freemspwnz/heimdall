@@ -4,3 +4,7 @@ class ChatUnavailable(Exception):
 
 class EmbeddingsUnavailable(Exception):
     pass
+
+
+class KnowledgeUnavailable(Exception):
+    pass
