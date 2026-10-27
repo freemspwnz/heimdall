@@ -166,7 +166,7 @@ async def test_cancel_hitl_resumes_no_without_restart() -> None:
     hitl = await _next_hitl(gen)
     assert hitl.action is not None
     assert isinstance(hitl.action, Action)
-    await runner.cancel_hitl(hitl.run_id)
+    await runner.decide(hitl.run_id, False)
     rest = [e async for e in gen]
     assert docker.restart_calls == []
     assert any(e.type == "report" for e in rest)

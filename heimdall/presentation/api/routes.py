@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from heimdall.application.exceptions import KnowledgeUnavailable
 from heimdall.application.models import RunEvent
+from heimdall.application.protocols import Graph
 from heimdall.application.use_cases import decide, ingest_knowledge, investigate
 
 router = APIRouter()
@@ -60,15 +61,16 @@ async def ask(body: AskBody, request: Request) -> StreamingResponse:
 
     async def event_stream() -> AsyncIterator[bytes]:
         run_id: str | None = None
+        graph: Graph = request.app.state.graph
         try:
-            async for event in investigate(body.question, request.app.state.graph):
+            async for event in investigate(body.question, graph):
                 if event.run_id is not None:
                     run_id = event.run_id
                 yield _sse(event)
         except asyncio.CancelledError:
             # Client disconnected mid-stream (often while waiting on HITL).
             if run_id is not None:
-                await request.app.state.graph.cancel_hitl(run_id)
+                await graph.decide(run_id, False)
             raise
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

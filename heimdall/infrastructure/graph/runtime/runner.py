@@ -92,9 +92,6 @@ class LangGraphRunner:
         future.set_result(accepted)
         return "ok"
 
-    async def cancel_hitl(self, run_id: str) -> None:
-        await self.decide(run_id, False)
-
     def _register_wait(self, run_id: str) -> asyncio.Future[bool]:
         future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
         self._waiting[run_id] = future
