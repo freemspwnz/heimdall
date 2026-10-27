@@ -52,8 +52,31 @@ def _facts_block(observations: list[dict[str, object]]) -> str:
             status = "ок"
         else:
             status = f"ошибка: {_text(observation.get('error'))}"
-        blocks.append(f"[{source}] {status}\n{_text(observation.get('payload'))}")
+        header = f"[{source}] {status}"
+        call = _call_line(observation)
+        payload = _text(observation.get("payload"))
+        if call:
+            blocks.append(f"{header}\n{call}\n{payload}")
+        else:
+            blocks.append(f"{header}\n{payload}")
     return "\n\n".join(blocks)
+
+
+def _call_line(observation: dict[str, object]) -> str:
+    parts: list[str] = []
+    tool = _text(observation.get("tool"))
+    target = _text(observation.get("target"))
+    since = _text(observation.get("since"))
+    query = _text(observation.get("query"))
+    if tool:
+        parts.append(tool)
+    if target:
+        parts.append(f"target={target}")
+    if since:
+        parts.append(f"since={since}")
+    if query:
+        parts.append(f"query={query}")
+    return " ".join(parts)
 
 
 def _system_prompt(base: str, state: GraphState) -> str:

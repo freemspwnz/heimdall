@@ -86,7 +86,7 @@ def propose_turn(target: str | None) -> ScriptedTurn:
     )
 
 
-def postgres_chat(target: str | None = "postgres") -> FakeChatModel:
+def postgres_chat(target: str | None = "gitea") -> FakeChatModel:
     return FakeChatModel(
         [
             ScriptedTurn(tool_calls=[tool_call("docker_inspect", name="postgres")]),
@@ -196,7 +196,7 @@ async def test_ask_hitl_then_resume_yes() -> None:
     await resume_task
     assert "event: hitl" in body
     assert "event: report" in body
-    assert docker.restart_calls == ["postgres"]
+    assert docker.restart_calls == ["gitea"]
 
 
 @pytest.mark.asyncio

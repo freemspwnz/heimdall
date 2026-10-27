@@ -5,18 +5,17 @@ Homelab на одном Docker-хосте (Intel N100): агент Heimdall кр
 ## postgres
 - container: postgres
 - related: postgres-exporter
-- restartable: true
+- restartable: false
 - logs: Loki `{container="postgres"}`
 - metrics: `pg_up` / postgres-exporter
 
 ## traefik
 - container: traefik
-- sample backend: whoami (restartable: true)
-- restartable: true
+- restartable: false
 
 ## tunnel (local only)
 - containers: 3x-ui
-- restartable: true
+- restartable: false
 - remote VPN host is out of scope for v1
 
 ## loki / victoriametrics

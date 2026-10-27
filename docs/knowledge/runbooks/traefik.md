@@ -7,10 +7,10 @@
 ## Куда смотреть
 
 1. Логи `traefik` в Loki или `docker logs traefik` — ошибки роутинга, upstream, TLS.
-2. Контейнер бэкенда из вопроса или инвентаря; для проверки прокси — эталонный бэкенд `whoami` (restartable: true).
+2. Контейнер бэкенда из вопроса или инвентаря.
 3. `docker inspect traefik` и inspect бэкенда — статус, health, сеть.
-4. Сравнить: `whoami` работает, а целевой сервис — нет → проблема в бэкенде, не в Traefik.
+4. Бэкенд не running, а traefik running — проблема в бэкенде. Оба running и в логах traefik есть upstream — проблема в прокси.
 
 ## Рестарт
 
-`docker restart traefik` или `docker restart whoami` — допустимы при гипотезе о зависшем прокси или тестовом бэкенде. **Не рестартить vaultwarden** (restartable: false) — секреты и сессии; при 502 за Traefik сначала смотреть логи и бэкенд, не vaultwarden.
+Рестарт `traefik` запрещён. Ответ по прокси — состояние: статус inspect, ошибки в логах прокси и бэкенда. Команду рестарта traefik не писать. Упавший бэкенд, кроме `postgres`, `redis`, `adguardhome` и `3x-ui`, рестартить можно. Живой Vaultwarden из-за 502 не рестартить; если контейнер хранилища не running, `docker restart vaultwarden` после подтверждения.

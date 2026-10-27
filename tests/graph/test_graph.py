@@ -216,7 +216,7 @@ def postgres_chat() -> FakeChatModel:
                 tool_call("vm_query", query="pg_up"),
             ),
             diagnose_turn(0.9, fenced=True),
-            propose_turn("postgres"),
+            propose_turn("gitea"),
             text_turn("Было: unhealthy. Сделали: рестарт. Стало: healthy."),
         ]
     )
@@ -232,14 +232,14 @@ async def test_postgres_confirmed_restart_executes_once_and_verifies() -> None:
     cfg = config("postgres-yes")
 
     payload = await run_until_interrupt(graph, {"question": POSTGRES_QUESTION}, cfg)
-    assert payload["proposed_action"]["target"] == "postgres"
+    assert payload["proposed_action"]["target"] == "gitea"
 
     final = await graph.ainvoke(Command(resume="yes"), cfg)
 
-    assert docker.restart_calls == ["postgres"]
+    assert docker.restart_calls == ["gitea"]
     assert final["human_decision"] == "yes"
     assert final["execution_result"]["ok"] is True
-    assert docker.logs_calls == ["postgres"]
+    assert docker.logs_calls == ["gitea"]
     assert final["retrieved_chunks"]
     assert final["confidence"] == 0.9
     assert final["hypothesis"]
@@ -502,12 +502,10 @@ async def test_tunnel_report_states_remote_vpn_was_not_inspected() -> None:
         loki=FakeLoki(),
         vm=FakeVictoriaMetrics(),
     )
-    cfg = config("tunnel-yes")
+    final = await graph.ainvoke({"question": TUNNEL_QUESTION}, config("tunnel-yes"))
 
-    await run_until_interrupt(graph, {"question": TUNNEL_QUESTION}, cfg)
-    final = await graph.ainvoke(Command(resume="yes"), cfg)
-
-    assert docker.restart_calls == ["3x-ui"]
+    assert final["proposed_action"] is None
+    assert docker.restart_calls == []
     assert "удалённ" in final["report"].lower()
 
 
@@ -518,7 +516,7 @@ async def test_traefik_proposal_outside_allowlist_is_dropped() -> None:
         [
             *investigate_turns(tool_call("docker_logs", name="traefik")),
             diagnose_turn(0.8),
-            propose_turn("vaultwarden", report="Бэкенд отдаёт 502."),
+            propose_turn("postgres", report="Бэкенд отдаёт 502."),
         ]
     )
     graph = await make_graph(
@@ -536,14 +534,14 @@ async def test_traefik_proposal_outside_allowlist_is_dropped() -> None:
 
 
 @pytest.mark.asyncio
-async def test_traefik_backend_restart_is_proposed_for_whoami() -> None:
+async def test_traefik_backend_restart_is_proposed_for_gitea() -> None:
     docker = FakeDocker()
     chat = FakeChatModel(
         [
             *investigate_turns(tool_call("docker_logs", name="traefik")),
             diagnose_turn(0.8),
-            propose_turn("whoami"),
-            text_turn("Было: 502. Сделали: рестарт whoami. Стало: 200."),
+            propose_turn("gitea"),
+            text_turn("Было: 502. Сделали: рестарт gitea. Стало: 200."),
         ]
     )
     graph = await make_graph(
@@ -555,11 +553,11 @@ async def test_traefik_backend_restart_is_proposed_for_whoami() -> None:
     cfg = config("traefik-allow")
 
     payload = await run_until_interrupt(graph, {"question": TRAEFIK_QUESTION}, cfg)
-    assert payload["proposed_action"]["target"] == "whoami"
+    assert payload["proposed_action"]["target"] == "gitea"
 
     final = await graph.ainvoke(Command(resume="yes"), cfg)
 
-    assert docker.restart_calls == ["whoami"]
+    assert docker.restart_calls == ["gitea"]
     assert final["report"]
 
 

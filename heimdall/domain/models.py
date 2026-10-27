@@ -7,6 +7,10 @@ class Observation:
     ok: bool
     payload: str
     error: str | None = None
+    tool: str = ""
+    target: str = ""
+    query: str = ""
+    since: str = ""
 
 
 @dataclass(frozen=True)

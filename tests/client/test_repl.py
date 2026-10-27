@@ -91,7 +91,7 @@ def propose_turn(target: str | None) -> ScriptedTurn:
     )
 
 
-def postgres_chat(target: str | None = "postgres") -> FakeChatModel:
+def postgres_chat(target: str | None = "gitea") -> FakeChatModel:
     return FakeChatModel(
         [
             ScriptedTurn(tool_calls=[tool_call("docker_inspect", name="postgres")]),
@@ -216,7 +216,7 @@ async def test_client_ask_and_resume_hitl(
                     await client.resume(event.run_id, True)
         assert any(e.type == "hitl" for e in events)
         assert any(e.type == "report" for e in events)
-        assert docker.restart_calls == ["postgres"]
+        assert docker.restart_calls == ["gitea"]
         return
 
 
@@ -239,10 +239,10 @@ async def test_repl_confirms_hitl(
                 output_fn=outputs.append,
             )
         assert code == 0
-        assert docker.restart_calls == ["postgres"]
+        assert docker.restart_calls == ["gitea"]
         joined = "\n".join(outputs)
         assert "Стало: healthy." in joined
-        assert "postgres" in joined.lower()
+        assert "gitea" in joined.lower()
         assert "heimdall>" not in joined
         assert "Выполнить?" not in joined
         return
@@ -269,7 +269,7 @@ async def test_repl_cyrillic_yes_does_not_restart(
         assert code == 0
         assert docker.restart_calls == []
         joined = "\n".join(outputs)
-        assert "postgres" in joined.lower()
+        assert "gitea" in joined.lower()
         assert "Команду не применял." in joined
         assert "Стало: healthy." not in joined
         return
@@ -348,7 +348,7 @@ async def test_repl_hitl_then_second_ask(
         assert docker.restart_calls == []
         # two full runs should each emit a final report line
         assert sum(1 for line in outputs if "Стало: healthy." in line) == 0
-        assert any("postgres" in line.lower() for line in outputs)
+        assert any("gitea" in line.lower() for line in outputs)
         return
 
 

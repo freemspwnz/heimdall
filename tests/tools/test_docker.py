@@ -51,38 +51,40 @@ async def test_docker_ps_formats_containers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_restart_postgres_allowed() -> None:
+async def test_restart_postgres_blocked_without_http() -> None:
+    session = MagicMock()
+    session.post = MagicMock()
+    client = DockerClient("unix:///var/run/docker.sock", session)
+    obs = await client.restart("postgres")
+    assert obs.ok is False
+    assert "allowlist" in (obs.error or "").lower()
+    session.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_restart_vaultwarden_allowed() -> None:
     session = MagicMock()
     session.post = MagicMock(return_value=_response(204, ""))
     client = DockerClient("unix:///var/run/docker.sock", session)
-    obs = await client.restart("postgres")
+    obs = await client.restart("vaultwarden")
     assert obs.ok is True
     assert obs.source == "docker"
     session.post.assert_called()
     url = session.post.call_args.args[0]
-    assert url == "http://localhost/containers/postgres/restart"
+    assert url == "http://localhost/containers/vaultwarden/restart"
 
 
 @pytest.mark.asyncio
-async def test_restart_vaultwarden_blocked_without_http() -> None:
+async def test_restart_gitea_allowed() -> None:
     session = MagicMock()
-    session.post = MagicMock()
-    client = DockerClient("unix:///var/run/docker.sock", session)
-    obs = await client.restart("vaultwarden")
-    assert obs.ok is False
-    assert "allowlist" in (obs.error or "").lower()
-    session.post.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_restart_gitea_blocked_without_http() -> None:
-    session = MagicMock()
-    session.post = MagicMock()
+    session.post = MagicMock(return_value=_response(204, ""))
     client = DockerClient("unix:///var/run/docker.sock", session)
     obs = await client.restart("gitea")
-    assert obs.ok is False
-    assert "allowlist" in (obs.error or "").lower()
-    session.post.assert_not_called()
+    assert obs.ok is True
+    assert obs.source == "docker"
+    session.post.assert_called()
+    url = session.post.call_args.args[0]
+    assert url == "http://localhost/containers/gitea/restart"
 
 
 @pytest.mark.asyncio

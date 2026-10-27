@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from heimdall.application.models import ToolCall
 from heimdall.application.protocols import Docker, Loki, VictoriaMetrics
 from heimdall.domain.models import Observation
@@ -21,24 +23,59 @@ class Tools:
         arguments = call.arguments
         if call.name == LOKI_QUERY:
             since = self._text(arguments.get("since")) or LOG_LOOKBACK
-            return await self._loki.query(
-                self._text(arguments.get("query")),
+            query = self._text(arguments.get("query"))
+            return self._stamp(
+                await self._loki.query(query, since=since),
+                tool=LOKI_QUERY,
+                query=query,
                 since=since,
             )
         if call.name == VM_QUERY:
-            return await self._vm.query(self._text(arguments.get("query")))
+            query = self._text(arguments.get("query"))
+            return self._stamp(
+                await self._vm.query(query),
+                tool=VM_QUERY,
+                query=query,
+            )
         if call.name == DOCKER_PS:
-            return await self._docker.ps()
+            return self._stamp(await self._docker.ps(), tool=DOCKER_PS)
         if call.name == DOCKER_INSPECT:
-            return await self._docker.inspect(self._text(arguments.get("name")))
+            target = self._text(arguments.get("name"))
+            return self._stamp(
+                await self._docker.inspect(target),
+                tool=DOCKER_INSPECT,
+                target=target,
+            )
         if call.name == DOCKER_LOGS:
             tail = self._tail(arguments.get("tail"))
-            return await self._docker.logs(self._text(arguments.get("name")), tail=tail)
+            target = self._text(arguments.get("name"))
+            return self._stamp(
+                await self._docker.logs(target, tail=tail),
+                tool=DOCKER_LOGS,
+                target=target,
+            )
         return Observation(
             source=call.name,
             ok=False,
             payload="",
             error=f"unknown tool: {call.name}",
+        )
+
+    @staticmethod
+    def _stamp(
+        observation: Observation,
+        *,
+        tool: str,
+        target: str = "",
+        query: str = "",
+        since: str = "",
+    ) -> Observation:
+        return replace(
+            observation,
+            tool=tool,
+            target=target,
+            query=query,
+            since=since,
         )
 
     @staticmethod

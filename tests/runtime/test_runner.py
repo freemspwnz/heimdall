@@ -83,7 +83,7 @@ def propose_turn(target: str | None) -> ScriptedTurn:
     )
 
 
-def postgres_chat(target: str | None = "postgres") -> FakeChatModel:
+def postgres_chat(target: str | None = "gitea") -> FakeChatModel:
     return FakeChatModel(
         [
             ScriptedTurn(tool_calls=[tool_call("docker_inspect", name="postgres")]),
