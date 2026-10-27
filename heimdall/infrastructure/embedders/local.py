@@ -1,8 +1,12 @@
-import asyncio
+from __future__ import annotations
 
-from sentence_transformers import SentenceTransformer
+import asyncio
+from typing import TYPE_CHECKING
 
 from heimdall.application.exceptions import EmbeddingsUnavailable
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 _QUERY_PREFIX = "query: "
 _PASSAGE_PREFIX = "passage: "
