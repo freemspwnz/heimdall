@@ -1,4 +1,5 @@
 import json
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -28,6 +29,11 @@ def _response(status: int, body: dict[str, object] | str) -> MagicMock:
     resp.__aenter__ = AsyncMock(return_value=resp)
     resp.__aexit__ = AsyncMock(return_value=None)
     return resp
+
+
+def _oauth(token: str, *, ttl_seconds: float = 1800) -> MagicMock:
+    expires_at = int((time.time() + ttl_seconds) * 1000)
+    return _response(200, {"access_token": token, "expires_at": expires_at})
 
 
 def _session(posts: list[MagicMock]) -> MagicMock:
@@ -86,7 +92,7 @@ async def test_fake_chat_model_pops_tool_calls_then_content() -> None:
 @pytest.mark.asyncio
 async def test_gigachat_chat_parses_tool_calls_after_oauth() -> None:
     settings = _settings()
-    oauth = _response(200, {"access_token": "tok-1"})
+    oauth = _oauth("tok-1")
     chat = _response(
         200,
         {
@@ -166,7 +172,7 @@ async def test_gigachat_serializes_investigate_history_as_native_functions() -> 
     model, session = _model(
         settings,
         [
-            _response(200, {"access_token": "tok-1"}),
+            _oauth("tok-1"),
             _response(200, {"choices": [{"message": {"content": "ok"}}]}),
         ],
     )
@@ -211,7 +217,7 @@ async def test_gigachat_chat_503_raises_chat_unavailable() -> None:
     model, session = _model(
         settings,
         [
-            _response(200, {"access_token": "tok-1"}),
+            _oauth("tok-1"),
             _response(503, "busy"),
         ],
     )
@@ -230,12 +236,83 @@ async def test_gigachat_oauth_failure_raises_chat_unavailable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gigachat_oauth_without_expires_at_raises() -> None:
+    settings = _settings()
+    model, _session = _model(
+        settings,
+        [_response(200, {"access_token": "tok-1"})],
+    )
+    with pytest.raises(ChatUnavailable, match="missing expires_at"):
+        await model.complete([ChatMessage(role="user", content="q")])
+
+
+@pytest.mark.asyncio
+async def test_gigachat_refreshes_token_inside_the_safety_window() -> None:
+    settings = _settings()
+    model, session = _model(
+        settings,
+        [
+            _oauth("tok-old", ttl_seconds=1),
+            _response(200, {"choices": [{"message": {"content": "one"}}]}),
+            _oauth("tok-new"),
+            _response(200, {"choices": [{"message": {"content": "two"}}]}),
+        ],
+    )
+    await model.complete([ChatMessage(role="user", content="q")])
+    await model.complete([ChatMessage(role="user", content="again")])
+    assert session.post.call_count == 4
+    assert session.post.call_args_list[1].kwargs["headers"]["Authorization"] == (
+        "Bearer tok-old"
+    )
+    assert session.post.call_args_list[3].kwargs["headers"]["Authorization"] == (
+        "Bearer tok-new"
+    )
+
+
+@pytest.mark.asyncio
+async def test_gigachat_retries_chat_once_after_401() -> None:
+    settings = _settings()
+    model, session = _model(
+        settings,
+        [
+            _oauth("tok-old"),
+            _response(401, "expired"),
+            _oauth("tok-new"),
+            _response(200, {"choices": [{"message": {"content": "ok"}}]}),
+        ],
+    )
+    result = await model.complete([ChatMessage(role="user", content="q")])
+    assert result.content == "ok"
+    assert session.post.call_count == 4
+    assert session.post.call_args_list[3].kwargs["headers"]["Authorization"] == (
+        "Bearer tok-new"
+    )
+
+
+@pytest.mark.asyncio
+async def test_gigachat_second_401_raises() -> None:
+    settings = _settings()
+    model, session = _model(
+        settings,
+        [
+            _oauth("tok-old"),
+            _response(401, "expired"),
+            _oauth("tok-new"),
+            _response(401, "still expired"),
+        ],
+    )
+    with pytest.raises(ChatUnavailable, match="401"):
+        await model.complete([ChatMessage(role="user", content="q")])
+    assert session.post.call_count == 4
+
+
+@pytest.mark.asyncio
 async def test_gigachat_embeddings_200_returns_vectors() -> None:
     settings = _settings()
     embedder, session = _embedder(
         settings,
         [
-            _response(200, {"access_token": "tok-emb"}),
+            _oauth("tok-emb"),
             _response(
                 200,
                 {
@@ -271,7 +348,7 @@ async def test_gigachat_embeddings_500_raises_unavailable() -> None:
     embedder, _ = _embedder(
         settings,
         [
-            _response(200, {"access_token": "tok-emb"}),
+            _oauth("tok-emb"),
             _response(500, "boom"),
         ],
     )
@@ -290,7 +367,7 @@ async def test_gigachat_verify_ssl_false_passes_ssl_false() -> None:
     model, session = _model(
         settings,
         [
-            _response(200, {"access_token": "tok-1"}),
+            _oauth("tok-1"),
             _response(200, {"choices": [{"message": {"content": "ok"}}]}),
         ],
     )
@@ -310,7 +387,7 @@ async def test_gigachat_verify_ssl_true_passes_ssl_true() -> None:
     model, session = _model(
         settings,
         [
-            _response(200, {"access_token": "tok-1"}),
+            _oauth("tok-1"),
             _response(200, {"choices": [{"message": {"content": "ok"}}]}),
         ],
     )

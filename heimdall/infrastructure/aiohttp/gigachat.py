@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 from typing import ClassVar
 
@@ -11,12 +12,14 @@ from ..settings import Settings
 
 class GigaChatClient:
     HTTP_TIMEOUT_SECONDS: ClassVar[int] = 60
+    TOKEN_EXPIRATION_SECONDS: ClassVar[int] = 300  # 5 minutes
 
     def __init__(self, settings: Settings, session: aiohttp.ClientSession) -> None:
         self._settings = settings
         self._session = session
         self._verify_ssl = settings.gigachat_verify_ssl
         self._token: str | None = None
+        self._expires_at: float | None = None
 
     async def _request(
         self,
@@ -48,7 +51,11 @@ class GigaChatClient:
             return resp.status, text
 
     async def access_token(self, error: type[Exception]) -> str:
-        if self._token is not None:
+        if (
+            self._token is not None
+            and self._expires_at is not None
+            and self._expires_at - time.time() > self.TOKEN_EXPIRATION_SECONDS
+        ):
             return self._token
         headers = {
             "Authorization": f"Basic {self._settings.gigachat_credentials}",
@@ -70,9 +77,13 @@ class GigaChatClient:
         except json.JSONDecodeError as exc:
             raise error(str(exc)) from exc
         token = self._parse_access_token(parsed)
+        expires_at = self._parse_expires_at(parsed)
         if token is None:
             raise error("missing access_token")
+        if expires_at is None:
+            raise error("missing expires_at")
         self._token = token
+        self._expires_at = expires_at
         return token
 
     async def post_json(
@@ -87,6 +98,15 @@ class GigaChatClient:
             status, text = await self._request(url, headers=headers, json_body=body)
         except (TimeoutError, aiohttp.ClientError) as exc:
             raise error(str(exc)) from exc
+        if status == 401:
+            self._token = None
+            self._expires_at = None
+            token = await self.access_token(error)
+            headers = {"Authorization": f"Bearer {token}"}
+            try:
+                status, text = await self._request(url, headers=headers, json_body=body)
+            except (TimeoutError, aiohttp.ClientError) as exc:
+                raise error(str(exc)) from exc
         if status != 200:
             raise error(f"{status} {text}")
         try:
@@ -130,3 +150,12 @@ class GigaChatClient:
             if isinstance(parsed, dict):
                 return {str(key): value for key, value in parsed.items()}
         return {}
+
+    @staticmethod
+    def _parse_expires_at(payload: object) -> float | None:
+        if not isinstance(payload, dict):
+            return None
+        expires_at = payload.get("expires_at")
+        if not isinstance(expires_at, int):
+            return None
+        return float(expires_at / 1000)
