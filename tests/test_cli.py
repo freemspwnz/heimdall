@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 from heimdall.__main__ import main
 
@@ -36,3 +38,48 @@ def test_serve_subcommand_runs_server(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("heimdall.__main__.serve", fake_serve)
     assert main(["serve"]) == 0
     assert called["serve"]
+
+
+def test_serve_executable_without_args_starts_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: dict[str, bool] = {}
+
+    async def fake_serve() -> int:
+        called["serve"] = True
+        return 0
+
+    monkeypatch.setattr(sys, "argv", ["/app/.venv/bin/serve"])
+    monkeypatch.setattr("heimdall.__main__.serve", fake_serve)
+    assert main() == 0
+    assert called["serve"]
+
+
+def test_cli_executable_without_args_starts_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: dict[str, bool] = {}
+
+    async def fake_cli() -> int:
+        called["cli"] = True
+        return 0
+
+    monkeypatch.setattr(sys, "argv", ["/app/.venv/bin/cli"])
+    monkeypatch.setattr("heimdall.__main__.cli", fake_cli)
+    assert main() == 0
+    assert called["cli"]
+
+
+def test_serve_help_does_not_start_the_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: dict[str, bool] = {}
+
+    async def fake_serve() -> int:
+        called["serve"] = True
+        return 0
+
+    monkeypatch.setattr(sys, "argv", ["/app/.venv/bin/serve", "--help"])
+    monkeypatch.setattr("heimdall.__main__.serve", fake_serve)
+    assert main() == 0
+    assert called == {}

@@ -40,13 +40,14 @@ If you previously indexed with another embedder (e.g. GigaChat), drop the old ta
 DROP TABLE IF EXISTS chunks;
 ```
 
-Index the knowledge base, start the runtime, then open a client REPL:
+Start the runtime, open a client REPL, then index the knowledge base from that REPL:
 
 ```bash
-uv run heimdall ingest
-uv run heimdall serve   # long-running runtime (loads model once)
+uv run python -m heimdall serve   # long-running runtime (loads the model once)
 # other terminal:
-uv run heimdall         # thin client REPL → HEIMDALL_URL
+uv run cli     # REPL → HEIMDALL_URL
+# at the heimdall> prompt:
+ingest
 ```
 
 ## Docker / Compose (guest)
@@ -75,8 +76,9 @@ The compose file joins an **external** network (`HEIMDALL_LAB_NETWORK`, default 
 **HF cache:** `./data/hf` is bind-mounted to `/data/hf` (`HF_HOME`) so Hugging Face model downloads persist across container rebuilds. Create the directory before the first run (`mkdir -p data/hf`). The whole `data/` tree is gitignored.
 ```bash
 docker compose up -d
-docker compose exec -it heimdall heimdall ingest   # first-time / re-index
-docker compose exec -it heimdall cli                 # client REPL inside the container
+docker compose exec -it heimdall cli   # client REPL inside the container
+# at the heimdall> prompt:
+ingest
 ```
 
 **Pull from GHCR** (images build and publish only on `v*` tags — not on every PR/push):
@@ -120,8 +122,8 @@ When cutting a release tag (e.g. `v0.3.0`), move the `[Unreleased]` section in `
 
 | Command | Purpose |
 | --- | --- |
-| `heimdall serve` | Long-running agent runtime |
-| `heimdall` / `heimdall cli` | Client REPL on the host (`uv run heimdall`) |
-| `cli` | Same REPL inside the container (`docker compose exec -it heimdall cli`) |
-| `heimdall ingest` | Index knowledge |
+| `uv run python -m heimdall serve` | Long-running agent runtime |
+| `uv run cli` | Client REPL on the host |
+| `docker compose exec -it heimdall cli` | Client REPL inside the container |
+| `ingest` | Index knowledge, typed in the REPL after the runtime is up |
 | `docker compose up -d` | Start serve |

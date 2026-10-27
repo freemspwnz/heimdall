@@ -1,6 +1,7 @@
 import asyncio
 import sys
 from argparse import ArgumentParser
+from pathlib import Path
 
 from .entrypoints import cli, serve
 
@@ -8,6 +9,12 @@ from .entrypoints import cli, serve
 def main(
     argv: list[str] | None = None,
 ) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+        invoked = Path(sys.argv[0]).name
+        if invoked in {"cli", "serve"} and not argv:
+            argv = [invoked]
+
     parser = ArgumentParser(
         prog="heimdall",
         description="DevOps agent for a homelab",

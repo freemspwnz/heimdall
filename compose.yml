@@ -23,7 +23,6 @@ services:
     # Optional host access to the control API (lab-internal by default):
     # ports:
     #   - "127.0.0.1:8080:8080"
-    entrypoint: ["heimdall", "serve"]
 
 networks:
   lab:

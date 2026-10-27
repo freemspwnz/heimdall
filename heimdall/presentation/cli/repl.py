@@ -6,7 +6,7 @@ import aiohttp
 from heimdall.domain.models import Action
 from heimdall.infrastructure.aiohttp import AgentClient
 
-AGENT_UNAVAILABLE = "агент не запущен, запустите heimdall serve"
+AGENT_UNAVAILABLE = "агент не запущен, запустите python -m heimdall serve"
 ASK_FAILED = "не удалось выполнить запрос"
 INGEST_FAILED = "не удалось загрузить данные"
 REPL_PROMPT = "heimdall> "

@@ -41,11 +41,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM deps-slim AS slim
 ENV PATH="/app/.venv/bin:$PATH"
 RUN mkdir -p /data/hf
-ENTRYPOINT ["heimdall"]
-CMD ["--help"]
+ENTRYPOINT ["python3", "-m", "heimdall", "serve"]
 
 FROM deps-embeddings AS embeddings
 ENV PATH="/app/.venv/bin:$PATH"
 RUN mkdir -p /data/hf
-ENTRYPOINT ["heimdall"]
-CMD ["--help"]
+ENTRYPOINT ["python3", "-m", "heimdall", "serve"]
