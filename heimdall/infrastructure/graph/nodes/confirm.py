@@ -4,7 +4,7 @@ from ..prompts import NO_ACTION_NOTE
 from ..state import GraphState, StateUpdate
 from .utils import _append, _final_report, _text
 
-POSITIVE_ANSWERS = frozenset({"y", "yes", "да", "д"})
+POSITIVE_ANSWERS = frozenset({"y", "yes"})
 
 
 def _decision(answer: object) -> str:
