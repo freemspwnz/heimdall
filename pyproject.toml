@@ -74,5 +74,5 @@ packages = ["heimdall"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["langgraph.*", "asyncpg.*", "sentence_transformers.*"]
+module = ["asyncpg.*", "sentence_transformers.*"]
 ignore_missing_imports = true
