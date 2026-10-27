@@ -3,12 +3,14 @@ from collections.abc import Awaitable, Callable
 
 import aiohttp
 
+from heimdall.application.exceptions import IngestError
 from heimdall.domain.models import Action
 from heimdall.infrastructure.aiohttp import AgentClient
 
 AGENT_UNAVAILABLE = "агент не запущен, запустите python -m heimdall serve"
 ASK_FAILED = "не удалось выполнить запрос"
 INGEST_FAILED = "не удалось загрузить данные"
+INGESTED = "Проиндексировано фрагментов"
 REPL_PROMPT = "heimdall> "
 REPL_EXIT_WORDS = frozenset({"exit", "quit"})
 POSITIVE_ANSWERS = frozenset({"y", "yes"})
@@ -97,7 +99,14 @@ async def run_repl(
         if question.lower() in REPL_EXIT_WORDS:
             return 0
         if question.lower() in INGEST_WORDS:
-            await _guard(client.ingest, output_fn, INGEST_FAILED)
+            try:
+                count = await client.ingest()
+            except IngestError as exc:
+                output_fn(f"{INGEST_FAILED}: {exc}")
+            except _CLIENT_ERRORS as exc:
+                output_fn(f"{INGEST_FAILED}: {type(exc).__name__}: {exc}")
+            else:
+                output_fn(f"{INGESTED}: {count}")
             continue
 
         async def ask(current: str = question) -> None:

@@ -10,7 +10,6 @@ from .presentation.api import create_app
 from .presentation.cli import run_repl
 
 EMBEDDINGS_UNAVAILABLE = "эмбеддинги недоступны"
-INGESTED = "Проиндексировано фрагментов"
 STARTUP_FAILED = "не удалось запустить агента, проверьте .env и доступность сервисов"
 INGEST_FAILED = "не удалось проиндексировать базу знаний"
 

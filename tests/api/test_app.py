@@ -243,3 +243,18 @@ async def test_ask_disconnect_cancels_hitl() -> None:
         await asyncio.sleep(0.01)
     assert not runner._lock.locked()
     assert docker.restart_calls == []
+
+
+@pytest.mark.asyncio
+async def test_ingest_missing_directory_returns_400(tmp_path: Path) -> None:
+    app = create_app(
+        graph=LangGraphRunner(graph_without_proposal()),
+        store=InMemoryVectorStore(),
+        embedder=FakeEmbedder(),
+        knowledge_dir=tmp_path / "missing",
+    )
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/ingest")
+    assert response.status_code == 400
+    assert "knowledge directory not found" in response.json()["detail"]

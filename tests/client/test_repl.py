@@ -361,3 +361,60 @@ async def test_repl_connector_error_after_start_continues(
         assert ASK_FAILED in joined
         assert "ClientConnectorError" in joined
         return
+
+
+@pytest.mark.asyncio
+async def test_repl_ingest_prints_chunk_count(
+    serve_app: Callable[[Any], AsyncIterator[str]],
+    tmp_path: Path,
+) -> None:
+    knowledge = tmp_path / "knowledge"
+    knowledge.mkdir()
+    (knowledge / "inventory.md").write_text("# lab\n\npostgres\n", encoding="utf-8")
+    app = create_app(
+        graph=LangGraphRunner(graph_without_proposal()),
+        store=InMemoryVectorStore(),
+        embedder=FakeEmbedder(),
+        knowledge_dir=knowledge,
+    )
+    answers: Iterator[str] = iter(["ingest", "exit"])
+    outputs: list[str] = []
+
+    async for base_url in serve_app(app):
+        async with make_client_session() as http:
+            code = await run_repl(
+                AgentClient(base_url, http),
+                input_fn=lambda: next(answers),
+                output_fn=outputs.append,
+            )
+        assert code == 0
+        assert "Проиндексировано фрагментов: 1" in outputs
+        return
+
+
+@pytest.mark.asyncio
+async def test_repl_ingest_reports_missing_directory(
+    serve_app: Callable[[Any], AsyncIterator[str]],
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        graph=LangGraphRunner(graph_without_proposal()),
+        store=InMemoryVectorStore(),
+        embedder=FakeEmbedder(),
+        knowledge_dir=tmp_path / "missing",
+    )
+    answers: Iterator[str] = iter(["ingest", "exit"])
+    outputs: list[str] = []
+
+    async for base_url in serve_app(app):
+        async with make_client_session() as http:
+            code = await run_repl(
+                AgentClient(base_url, http),
+                input_fn=lambda: next(answers),
+                output_fn=outputs.append,
+            )
+        assert code == 0
+        joined = "\n".join(outputs)
+        assert "не удалось загрузить данные: knowledge directory not found" in joined
+        assert "ClientResponseError" not in joined
+        return

@@ -5,6 +5,7 @@ from urllib.parse import urljoin
 
 import aiohttp
 
+from heimdall.application.exceptions import IngestError
 from heimdall.application.models import RunEvent, RunEventType
 from heimdall.domain.models import Action
 
@@ -59,14 +60,17 @@ class AgentClient:
         ) as resp:
             resp.raise_for_status()
 
-    async def ingest(self) -> None:
+    async def ingest(self) -> int:
         url = urljoin(self._base_url, "v1/ingest")
         async with self._http.post(
             url,
             timeout=_INGEST_TIMEOUT,
             headers={"Connection": "close"},
         ) as resp:
-            resp.raise_for_status()
+            if resp.status >= 400:
+                raise IngestError(await self._response_detail(resp))
+            payload = await resp.json()
+            return int(payload["count"])
 
     async def _iter_sse(self, content: aiohttp.StreamReader) -> AsyncIterator[RunEvent]:
         buffer = ""
@@ -106,3 +110,16 @@ class AgentClient:
             run_id=str(run_id) if run_id is not None else None,
             action=action,
         )
+
+    @staticmethod
+    async def _response_detail(resp: aiohttp.ClientResponse) -> str:
+        try:
+            payload = await resp.json(content_type=None)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            detail = payload.get("detail")
+            if isinstance(detail, str) and detail:
+                return detail
+        reason = resp.reason or ""
+        return reason or str(resp.status)
