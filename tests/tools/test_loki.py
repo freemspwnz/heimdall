@@ -36,7 +36,7 @@ async def test_loki_query_ok_truncates_and_flattens() -> None:
     assert obs.source == "loki"
     payload_lines = obs.payload.splitlines()
     assert len(payload_lines) <= 100
-    assert payload_lines == [f"log-{i}" for i in range(20, 120)]
+    assert payload_lines == [f"container=postgres log-{i}" for i in range(20, 120)]
     assert "log-0" not in obs.payload
     session.get.assert_called_once()
     url = session.get.call_args.args[0]
@@ -45,6 +45,28 @@ async def test_loki_query_ok_truncates_and_flattens() -> None:
     assert params["query"] == '{container="postgres"}'
     assert params["direction"] == "backward"
     assert params["limit"] == str(MAX_OBSERVATION_LINES)
+
+
+@pytest.mark.asyncio
+async def test_loki_prefixes_container_name_label() -> None:
+    body: dict[str, object] = {
+        "data": {
+            "result": [
+                {
+                    "stream": {
+                        "container_name": "postgres",
+                        "service_name": "postgres",
+                    },
+                    "values": [["100", "FATAL: sorry"]],
+                }
+            ]
+        }
+    }
+    session = MagicMock()
+    session.get = MagicMock(return_value=_response(200, body))
+    client = LokiClient("http://loki:3100", session)
+    obs = await client.query('{container_name="postgres"}')
+    assert obs.payload == "container_name=postgres FATAL: sorry"
 
 
 @pytest.mark.asyncio

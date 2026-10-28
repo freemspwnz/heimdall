@@ -16,6 +16,7 @@ _SOURCE = "loki"
 _QUERY_PATH = "/loki/api/v1/query_range"
 _QUERY_LIMIT = MAX_OBSERVATION_LINES
 _EMPTY_PAYLOAD = "no streams"
+_LABEL_KEYS = ("container_name", "container", "service")
 
 
 class LokiClient:
@@ -99,6 +100,17 @@ class LokiClient:
             return int(raw)
         return 0
 
+    @staticmethod
+    def _stream_prefix(stream: dict[str, object]) -> str:
+        labels = stream.get("stream")
+        if not isinstance(labels, dict):
+            return ""
+        for key in _LABEL_KEYS:
+            value = labels.get(key)
+            if isinstance(value, str) and value:
+                return f"{key}={value} "
+        return ""
+
     def _flatten_log_lines(self, payload: object) -> list[str]:
         if not isinstance(payload, dict):
             return []
@@ -115,13 +127,14 @@ class LokiClient:
             values = stream.get("values")
             if not isinstance(values, list):
                 continue
+            prefix = self._stream_prefix(stream)
             for pair in values:
                 if (
                     isinstance(pair, list)
                     and len(pair) >= 2
                     and isinstance(pair[1], str)
                 ):
-                    entries.append((self._entry_ts(pair[0]), pair[1]))
+                    entries.append((self._entry_ts(pair[0]), f"{prefix}{pair[1]}"))
         entries.sort(key=lambda item: item[0])
         return [line for _, line in entries]
 
