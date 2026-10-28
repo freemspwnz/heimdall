@@ -8,11 +8,12 @@ import aiohttp
 from heimdall.application.models import ToolCall
 
 from ..settings import Settings
+from .utils import timeout
 
 
 class GigaChatClient:
     HTTP_TIMEOUT_SECONDS: ClassVar[int] = 60
-    TOKEN_EXPIRATION_SECONDS: ClassVar[int] = 300  # 5 minutes
+    TOKEN_REMAINING_SECONDS: ClassVar[int] = 300  # 5 minutes
 
     def __init__(self, settings: Settings, session: aiohttp.ClientSession) -> None:
         self._settings = settings
@@ -29,13 +30,13 @@ class GigaChatClient:
         data: dict[str, str] | None = None,
         json_body: dict[str, object] | None = None,
     ) -> tuple[int, str]:
-        timeout = self._timeout()
+        _timeout = timeout(self.HTTP_TIMEOUT_SECONDS)
         if json_body is not None:
             cm = self._session.post(
                 url,
                 headers=headers,
                 json=json_body,
-                timeout=timeout,
+                timeout=_timeout,
                 ssl=self._verify_ssl,
             )
         else:
@@ -43,7 +44,7 @@ class GigaChatClient:
                 url,
                 headers=headers,
                 data=data,
-                timeout=timeout,
+                timeout=_timeout,
                 ssl=self._verify_ssl,
             )
         async with cm as resp:
@@ -54,7 +55,7 @@ class GigaChatClient:
         if (
             self._token is not None
             and self._expires_at is not None
-            and self._expires_at - time.time() > self.TOKEN_EXPIRATION_SECONDS
+            and self._expires_at - time.time() > self.TOKEN_REMAINING_SECONDS
         ):
             return self._token
         headers = {
@@ -127,9 +128,6 @@ class GigaChatClient:
                 arguments=self._parse_arguments(raw.get("arguments")),
             )
         ]
-
-    def _timeout(self) -> aiohttp.ClientTimeout:
-        return aiohttp.ClientTimeout(total=self.HTTP_TIMEOUT_SECONDS)
 
     @staticmethod
     def _parse_access_token(payload: object) -> str | None:

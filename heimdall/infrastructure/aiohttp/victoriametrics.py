@@ -4,8 +4,7 @@ import aiohttp
 
 from heimdall.domain.models import Observation
 
-from ..constants import HTTP_TIMEOUT_SECONDS
-from .utils import truncate_payload
+from .utils import fail, ok, timeout, truncate_payload
 
 _SOURCE = "victoriametrics"
 _QUERY_PATH = "/api/v1/query"
@@ -20,48 +19,23 @@ class VictoriaMetricsClient:
     async def query(self, metricsql: str) -> Observation:
         url = f"{self._base_url}{_QUERY_PATH}"
         params: dict[str, str] = {"query": metricsql}
-        timeout = aiohttp.ClientTimeout(total=HTTP_TIMEOUT_SECONDS)
         try:
-            async with self._session.get(url, params=params, timeout=timeout) as resp:
+            async with self._session.get(url, params=params, timeout=timeout()) as resp:
                 text = await resp.text()
                 if resp.status != 200:
-                    return Observation(
-                        source=_SOURCE,
-                        ok=False,
-                        payload="",
-                        error=f"{resp.status} {truncate_payload(text)}",
-                    )
+                    return fail(_SOURCE, f"{resp.status} {truncate_payload(text)}")
                 try:
                     parsed: object = json.loads(text)
                 except json.JSONDecodeError as exc:
-                    return Observation(
-                        source=_SOURCE,
-                        ok=False,
-                        payload="",
-                        error=str(exc),
-                    )
+                    return fail(_SOURCE, str(exc))
                 lines = self._flatten_vector(parsed)
                 if not lines:
-                    return Observation(source=_SOURCE, ok=True, payload=_EMPTY_PAYLOAD)
-                return Observation(
-                    source=_SOURCE,
-                    ok=True,
-                    payload=truncate_payload("\n".join(lines)),
-                )
+                    return ok(_SOURCE, _EMPTY_PAYLOAD)
+                return ok(_SOURCE, truncate_payload("\n".join(lines)))
         except TimeoutError as exc:
-            return Observation(
-                source=_SOURCE,
-                ok=False,
-                payload="",
-                error=str(exc) or "timeout",
-            )
+            return fail(_SOURCE, str(exc) or "timeout")
         except aiohttp.ClientError as exc:
-            return Observation(
-                source=_SOURCE,
-                ok=False,
-                payload="",
-                error=str(exc),
-            )
+            return fail(_SOURCE, str(exc))
 
     @staticmethod
     def _format_metric(metric: object) -> str:

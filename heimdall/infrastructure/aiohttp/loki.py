@@ -5,12 +5,8 @@ import aiohttp
 
 from heimdall.domain.models import Observation
 
-from ..constants import (
-    HTTP_TIMEOUT_SECONDS,
-    MAX_OBSERVATION_CHARS,
-    MAX_OBSERVATION_LINES,
-)
-from .utils import truncate_payload
+from ..constants import MAX_OBSERVATION_CHARS, MAX_OBSERVATION_LINES
+from .utils import fail, ok, timeout, truncate_payload
 
 _SOURCE = "loki"
 _QUERY_PATH = "/loki/api/v1/query_range"
@@ -35,48 +31,24 @@ class LokiClient:
             "limit": str(_QUERY_LIMIT),
             "direction": "backward",
         }
-        timeout = aiohttp.ClientTimeout(total=HTTP_TIMEOUT_SECONDS)
+
         try:
-            async with self._session.get(url, params=params, timeout=timeout) as resp:
+            async with self._session.get(url, params=params, timeout=timeout()) as resp:
                 text = await resp.text()
                 if resp.status != 200:
-                    return Observation(
-                        source=_SOURCE,
-                        ok=False,
-                        payload="",
-                        error=f"{resp.status} {truncate_payload(text)}",
-                    )
+                    return fail(_SOURCE, f"{resp.status} {truncate_payload(text)}")
                 try:
                     parsed: object = json.loads(text)
                 except json.JSONDecodeError as exc:
-                    return Observation(
-                        source=_SOURCE,
-                        ok=False,
-                        payload="",
-                        error=str(exc),
-                    )
+                    return fail(_SOURCE, str(exc))
                 lines = self._flatten_log_lines(parsed)
                 if not lines:
-                    return Observation(source=_SOURCE, ok=True, payload=_EMPTY_PAYLOAD)
-                return Observation(
-                    source=_SOURCE,
-                    ok=True,
-                    payload=truncate_payload(self._tail_window(lines)),
-                )
+                    return ok(_SOURCE, _EMPTY_PAYLOAD)
+                return ok(_SOURCE, truncate_payload(self._tail_window(lines)))
         except TimeoutError as exc:
-            return Observation(
-                source=_SOURCE,
-                ok=False,
-                payload="",
-                error=str(exc) or "timeout",
-            )
+            return fail(_SOURCE, str(exc) or "timeout")
         except aiohttp.ClientError as exc:
-            return Observation(
-                source=_SOURCE,
-                ok=False,
-                payload="",
-                error=str(exc),
-            )
+            return fail(_SOURCE, str(exc))
 
     @staticmethod
     def _since_seconds(since: str) -> float:
