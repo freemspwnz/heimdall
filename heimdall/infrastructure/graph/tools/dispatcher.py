@@ -24,6 +24,7 @@ class Tools:
     async def __call__(self, call: ToolCall) -> Observation:
         observation = await self._run(call)
         self._logger.info(self._observe_line(observation))
+        self._logger.debug("observe body {}", _observe_body(observation))
         return observation
 
     async def _run(self, call: ToolCall) -> Observation:
@@ -118,3 +119,11 @@ class Tools:
         detail = observation.payload if observation.ok else (observation.error or "")
         head = detail.replace("\n", " ")[:160]
         return f"{' '.join(parts)} {flag} {head}".rstrip()
+
+
+def _observe_body(observation: Observation) -> str:
+    if observation.ok:
+        text = observation.payload
+    else:
+        text = f"ошибка: {observation.error}"
+    return text.replace("\n", " ")

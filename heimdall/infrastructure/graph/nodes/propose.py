@@ -30,7 +30,8 @@ class propose:
                     role="system", content=_system_prompt(PROPOSE_SYSTEM, state)
                 ),
                 ChatMessage(role="user", content=_context(state)),
-            ]
+            ],
+            node="propose",
         )
         data = _parse_json_object(result.content)
         report = _text(data.get("report")) or _text(state.get("report"))

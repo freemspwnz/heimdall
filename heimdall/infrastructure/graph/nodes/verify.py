@@ -33,7 +33,8 @@ class verify:
                 ChatMessage(
                     role="user", content=self._verify_context(state, observations)
                 ),
-            ]
+            ],
+            node="verify",
         )
         report = _text(result.content) or _text(state.get("report"))
         return {

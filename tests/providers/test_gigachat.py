@@ -461,15 +461,42 @@ async def test_gigachat_chat_logs_request_and_response() -> None:
                 parameters={"type": "object"},
             )
         ],
+        node="investigate",
     )
     assert recorded.lines[0] == (
-        "model request model=GigaChat-3-Ultra messages=1 "
-        "roles=user tools=docker_inspect"
+        "model request node=investigate model=GigaChat-3-Ultra "
+        "messages=1 roles=user tools=docker_inspect"
     )
     assert recorded.lines[1] == (
         'model response tool_calls=docker_inspect({"name": "postgres"}) '
         "content=контейнер жив"
     )
+
+
+@pytest.mark.asyncio
+async def test_diagnose_logs_full_content_and_investigate_truncates() -> None:
+    settings = _settings()
+    body = "А" * 180 + "\nхвост"  # noqa: RUF001
+    session = _session(
+        [
+            _oauth("tok-1"),
+            _response(200, {"choices": [{"message": {"content": body}}]}),
+            _response(200, {"choices": [{"message": {"content": body}}]}),
+        ]
+    )
+    recorded = RecordingLogger()
+    model = GigaChatChatModel(settings, GigaChatClient(settings, session), recorded)
+    await model.complete(
+        [ChatMessage(role="user", content="q")],
+        node="diagnose",
+    )
+    await model.complete(
+        [ChatMessage(role="user", content="q")],
+        node="investigate",
+    )
+    flat = "А" * 180 + " хвост"  # noqa: RUF001
+    assert recorded.lines[1] == f"model response tool_calls= content={flat}"
+    assert recorded.lines[3] == ("model response tool_calls= content=" + flat[:160])
 
 
 @pytest.mark.asyncio

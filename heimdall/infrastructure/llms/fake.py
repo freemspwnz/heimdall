@@ -18,7 +18,10 @@ class FakeChatModel:
         self,
         messages: list[ChatMessage],
         tools: list[ToolSpec] | None = None,
+        *,
+        node: str = "",
     ) -> ChatResult:
+        del node
         self.calls.append(
             {
                 "messages": list(messages),

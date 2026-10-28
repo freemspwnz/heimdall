@@ -8,4 +8,6 @@ class ChatModel(Protocol):
         self,
         messages: list[ChatMessage],
         tools: list[ToolSpec] | None = None,
+        *,
+        node: str = "",
     ) -> ChatResult: ...

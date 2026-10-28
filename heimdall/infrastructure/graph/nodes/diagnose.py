@@ -18,7 +18,8 @@ class diagnose:
                     role="system", content=_system_prompt(DIAGNOSE_SYSTEM, state)
                 ),
                 ChatMessage(role="user", content=_context(state)),
-            ]
+            ],
+            node="diagnose",
         )
         data = _parse_json_object(result.content)
         report = _text(data.get("report"))

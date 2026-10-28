@@ -118,3 +118,18 @@ async def test_tools_log_observation_line() -> None:
     obs = await tools(_call(DOCKER_INSPECT, name="gitea"))
     assert obs.ok is True
     assert recorded.lines == ["observe docker_inspect name=gitea ok gitea"]
+
+
+@pytest.mark.asyncio
+async def test_tools_log_full_body_at_debug() -> None:
+    recorded = RecordingLogger()
+
+    class _LongLoki:
+        async def query(self, logql: str, since: str = "15m") -> Observation:
+            del logql, since
+            return Observation(source="loki", ok=True, payload="A\n" + ("b" * 200))
+
+    tools = Tools(_Docker(), _LongLoki(), _Vm(), recorded)
+    await tools(_call(LOKI_QUERY, query="up"))
+    assert recorded.lines[0].endswith(" " + ("A " + ("b" * 200))[:160])
+    assert recorded.debug_lines == ["observe body A " + ("b" * 200)]

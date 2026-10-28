@@ -24,11 +24,14 @@ class GigaChatChatModel:
         self,
         messages: list[ChatMessage],
         tools: list[ToolSpec] | None = None,
+        *,
+        node: str = "",
     ) -> ChatResult:
         tool_names = ",".join(spec.name for spec in tools) if tools else ""
         roles = ",".join(message.role for message in messages)
         self._logger.info(
-            "model request model={} messages={} roles={} tools={}",
+            "model request node={} model={} messages={} roles={} tools={}",
+            node,
             self._settings.gigachat_chat_model,
             len(messages),
             roles,
@@ -51,7 +54,9 @@ class GigaChatChatModel:
             )
             raise
         result = self._parse_chat_result(parsed)
-        content = (result.content or "").replace("\n", " ")[:160]
+        content = (result.content or "").replace("\n", " ")
+        if node not in {"diagnose", "propose"}:
+            content = content[:160]
         calls = ",".join(
             f"{call.name}({json.dumps(call.arguments, ensure_ascii=False)})"
             for call in result.tool_calls

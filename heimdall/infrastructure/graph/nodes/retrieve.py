@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 
 from heimdall.application.exceptions import EmbeddingsUnavailable
 from heimdall.application.models import ChatMessage
-from heimdall.application.protocols import ChatModel, Embedder, VectorStore
+from heimdall.application.protocols import ChatModel, Embedder, Logger, VectorStore
 from heimdall.domain.models import Chunk
 
 from ...constants import RETRIEVE_TOP_K
@@ -23,12 +23,18 @@ class retrieve:
         retriever: VectorStore,
         embedder: Embedder,
         chat: ChatModel,
+        logger: Logger,
     ) -> None:
         self._retriever = retriever
         self._embedder = embedder
         self._chat = chat
+        self._logger = logger
 
     async def __call__(self, state: GraphState) -> StateUpdate:
+        self._logger.info(
+            "question {}",
+            state["question"].replace("\n", " "),
+        )
         try:
             chunks = await self._retriever.list_chunks()
         except Exception:
@@ -36,7 +42,10 @@ class retrieve:
         chosen = await self._choose(state["question"], chunks)
         if not chosen:
             return await self._search(state)
-        return {"retrieved_chunks": [asdict(chunk) for chunk in chosen]}
+        return _log_sources(
+            self._logger,
+            {"retrieved_chunks": [asdict(chunk) for chunk in chosen]},
+        )
 
     async def _choose(self, question: str, chunks: list[Chunk]) -> list[Chunk]:
         grouped = _group(chunks)
@@ -51,7 +60,8 @@ class retrieve:
                         role="user",
                         content=_router_user(question, grouped, routable),
                     ),
-                ]
+                ],
+                node="retrieve",
             )
         except Exception:
             return []
@@ -82,7 +92,26 @@ class retrieve:
             )
         except EmbeddingsUnavailable:
             chunks = []
-        return {"retrieved_chunks": [asdict(chunk) for chunk in chunks]}
+        return _log_sources(
+            self._logger,
+            {"retrieved_chunks": [asdict(chunk) for chunk in chunks]},
+        )
+
+
+def _log_sources(logger: Logger, update: StateUpdate) -> StateUpdate:
+    chunks = update.get("retrieved_chunks") or []
+    names: list[str] = []
+    seen: set[str] = set()
+    if isinstance(chunks, list):
+        for chunk in chunks:
+            if not isinstance(chunk, dict):
+                continue
+            source = chunk.get("source")
+            if isinstance(source, str) and source and source not in seen:
+                seen.add(source)
+                names.append(source)
+    logger.info("sources={}", ",".join(names))
+    return update
 
 
 def _group(chunks: list[Chunk]) -> dict[str, list[Chunk]]:

@@ -29,7 +29,7 @@ def build_graph(
     graph: StateGraph[GraphState, Any, GraphState, GraphState] = StateGraph(GraphState)
     graph.add_node(
         "retrieve",
-        retrieve(deps.retriever, deps.embedder, deps.chat),
+        retrieve(deps.retriever, deps.embedder, deps.chat, deps.logger),
     )
     graph.add_node("investigate", investigate(deps.chat, tools))
     graph.add_node("diagnose", diagnose(deps.chat))

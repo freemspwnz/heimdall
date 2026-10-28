@@ -30,7 +30,9 @@ class investigate:
         ]
         budget = MAX_TOOL_CALLS_PER_ROUND
         while budget > 0:
-            result = await self._chat.complete(messages, tools=READ_TOOLS)
+            result = await self._chat.complete(
+                messages, tools=READ_TOOLS, node="investigate"
+            )
             if not result.tool_calls:
                 break
             calls = result.tool_calls[:budget]

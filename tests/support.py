@@ -40,6 +40,10 @@ class SilentLogger:
 class RecordingLogger(SilentLogger):
     def __init__(self) -> None:
         self.lines: list[str] = []
+        self.debug_lines: list[str] = []
+
+    def debug(self, message: str, *args: object, **kwargs: object) -> None:
+        self.debug_lines.append(_formatted(message, args))
 
     def info(self, message: str, *args: object, **kwargs: object) -> None:
         self.lines.append(_formatted(message, args))

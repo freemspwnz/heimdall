@@ -14,6 +14,7 @@ from heimdall.infrastructure.graph.prompts import ROUTER_SYSTEM
 from heimdall.infrastructure.graph.state import GraphState, StateUpdate
 from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
 from heimdall.infrastructure.store import InMemoryVectorStore
+from tests.support import RecordingLogger, SilentLogger
 
 QUESTION = "что с alpha?"  # noqa: RUF001
 QUESTION_STATE = cast(GraphState, {"question": QUESTION})
@@ -61,8 +62,10 @@ class DownChat:
         self,
         messages: list[ChatMessage],
         tools: list[ToolSpec] | None = None,
+        *,
+        node: str = "",
     ) -> ChatResult:
-        del messages, tools
+        del messages, tools, node
         raise ChatUnavailable("down")
 
 
@@ -156,12 +159,14 @@ async def run(
     store: InMemoryVectorStore,
     content: str,
     embedder: Embedder | None = None,
+    logger: SilentLogger | None = None,
 ) -> tuple[StateUpdate, FakeChatModel]:
     chat = FakeChatModel([ScriptedTurn(content=content)])
     update = await retrieve(
         store,
         embedder if embedder is not None else FakeEmbedder(),
         chat,
+        logger if logger is not None else SilentLogger(),
     )(QUESTION_STATE)
     return update, chat
 
@@ -313,7 +318,7 @@ async def test_unusable_router_answer_searches_and_drops_the_tail(
 async def test_empty_catalog_skips_the_model_and_searches() -> None:
     store = RecordingStore()
     chat = FakeChatModel([ScriptedTurn(content=answer(["runbooks/alpha.md"]))])
-    update = await retrieve(store, FakeEmbedder(), chat)(QUESTION_STATE)
+    update = await retrieve(store, FakeEmbedder(), chat, SilentLogger())(QUESTION_STATE)
     assert chat.calls == []
     assert store.searches == 1
     assert update["retrieved_chunks"] == []
@@ -327,7 +332,7 @@ async def test_inventory_only_catalog_skips_the_model() -> None:
         FakeEmbedder(),
     )
     chat = FakeChatModel([ScriptedTurn(content=answer(["inventory.md"]))])
-    update = await retrieve(store, FakeEmbedder(), chat)(QUESTION_STATE)
+    update = await retrieve(store, FakeEmbedder(), chat, SilentLogger())(QUESTION_STATE)
     assert chat.calls == []
     assert store.searches == 1
     assert update["retrieved_chunks"] == [
@@ -338,16 +343,7 @@ async def test_inventory_only_catalog_skips_the_model() -> None:
 @pytest.mark.asyncio
 async def test_chat_exception_falls_back_to_search() -> None:
     store, _chunks = await loaded()
-    update = await retrieve(store, FakeEmbedder(), DownChat())(QUESTION_STATE)
-    assert store.searches == 1
-    assert isinstance(update["retrieved_chunks"], list)
-    assert len(update["retrieved_chunks"]) == RETRIEVE_TOP_K
-
-
-@pytest.mark.asyncio
-async def test_list_chunks_exception_falls_back_to_search() -> None:
-    store, _chunks = await loaded()
-    update = await retrieve(ExplodingList(store), FakeEmbedder(), DownChat())(
+    update = await retrieve(store, FakeEmbedder(), DownChat(), SilentLogger())(
         QUESTION_STATE
     )
     assert store.searches == 1
@@ -356,9 +352,22 @@ async def test_list_chunks_exception_falls_back_to_search() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_chunks_exception_falls_back_to_search() -> None:
+    store, _chunks = await loaded()
+    update = await retrieve(
+        ExplodingList(store), FakeEmbedder(), DownChat(), SilentLogger()
+    )(QUESTION_STATE)
+    assert store.searches == 1
+    assert isinstance(update["retrieved_chunks"], list)
+    assert len(update["retrieved_chunks"]) == RETRIEVE_TOP_K
+
+
+@pytest.mark.asyncio
 async def test_cancelled_list_chunks_propagates() -> None:
     with pytest.raises(asyncio.CancelledError):
-        await retrieve(CancelList(), FakeEmbedder(), DownChat())(QUESTION_STATE)
+        await retrieve(CancelList(), FakeEmbedder(), DownChat(), SilentLogger())(
+            QUESTION_STATE
+        )
 
 
 @pytest.mark.asyncio
@@ -385,3 +394,15 @@ async def test_search_runtime_error_propagates() -> None:
     store, _chunks = await loaded()
     with pytest.raises(RuntimeError, match="boom"):
         await run(store, answer([]), BoomEmbedder())
+
+
+@pytest.mark.asyncio
+async def test_retrieve_logs_question_and_source_names() -> None:
+    store, _chunks = await loaded()
+    recorded = RecordingLogger()
+    chat = FakeChatModel([ScriptedTurn(content=answer(["runbooks/alpha.md"]))])
+    await retrieve(store, FakeEmbedder(), chat, recorded)(QUESTION_STATE)
+    assert recorded.lines == [
+        "question что с alpha?",  # noqa: RUF001
+        "sources=runbooks/alpha.md,inventory.md",
+    ]
