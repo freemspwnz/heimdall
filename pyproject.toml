@@ -13,6 +13,7 @@ dependencies = [
     "fastapi>=0.115",
     "langgraph>=0.2",
     "langgraph-checkpoint-sqlite>=3.1.1",
+    "loguru>=0.7.3",
     "pydantic-settings>=2.4",
     "python-dotenv>=1.0",
     "uvicorn[standard]>=0.32",
@@ -74,5 +75,5 @@ packages = ["heimdall"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["asyncpg.*", "sentence_transformers.*"]
+module = ["asyncpg.*", "sentence_transformers.*", "loguru.*"]
 ignore_missing_imports = true

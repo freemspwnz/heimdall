@@ -79,6 +79,26 @@ def test_resolve_heimdall_url_reads_env(monkeypatch: pytest.MonkeyPatch) -> None
     assert Settings.resolve_heimdall_url() == "http://agent:8080"
 
 
+def test_settings_log_level_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GIGACHAT_CREDENTIALS", "secret-key")
+    monkeypatch.setenv(
+        "POSTGRES_DSN", "postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall"
+    )
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    s = Settings(_env_file=None)
+    assert s.log_level == "DEBUG"
+
+
+def test_settings_log_level_defaults_to_info(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GIGACHAT_CREDENTIALS", "secret-key")
+    monkeypatch.setenv(
+        "POSTGRES_DSN", "postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall"
+    )
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    s = Settings(_env_file=None)
+    assert s.log_level == "INFO"
+
+
 def test_settings_rejects_non_unix_docker_host(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GIGACHAT_CREDENTIALS", "secret-key")
     monkeypatch.setenv(

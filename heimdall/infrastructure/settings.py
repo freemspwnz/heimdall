@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     local_embedder_model: str = "intfloat/multilingual-e5-base"
     heimdall_listen: str = "0.0.0.0:8080"
     heimdall_url: str = "http://127.0.0.1:8080"
+    log_level: str = "INFO"
 
     @staticmethod
     def resolve_heimdall_url() -> str:
