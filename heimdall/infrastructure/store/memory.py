@@ -17,6 +17,9 @@ class InMemoryVectorStore:
         vectors = await embedder.embed([chunk.text for chunk in chunks])
         self._items = list(zip(chunks, vectors, strict=True))
 
+    async def list_chunks(self) -> list[Chunk]:
+        return [chunk for chunk, _vector in self._items]
+
     async def search(
         self,
         query: str,

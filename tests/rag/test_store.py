@@ -1,5 +1,6 @@
 import pytest
 from heimdall.application.use_cases.ingest import chunk_markdown
+from heimdall.domain.models import Chunk
 from heimdall.infrastructure.embedders import FakeEmbedder
 from heimdall.infrastructure.store import InMemoryVectorStore
 
@@ -82,3 +83,31 @@ async def test_postgres_question_retrieves_postgres_not_jellyfin() -> None:
     assert any("postgres" in h.source or "postgres" in h.text.lower() for h in hits)
     assert hits[0].source in {"postgres.md", "inventory.md"}
     assert hits[0].source != "jellyfin.md"
+
+
+@pytest.mark.asyncio
+async def test_inmemory_list_chunks_preserves_upsert_order() -> None:
+    store = InMemoryVectorStore()
+    chunks = [
+        Chunk(text="one", source="runbooks/a.md"),
+        Chunk(text="two", source="runbooks/b.md"),
+    ]
+    await store.upsert(chunks, FakeEmbedder())
+    assert await store.list_chunks() == chunks
+
+
+@pytest.mark.asyncio
+async def test_inmemory_list_chunks_empty_store_returns_empty_list() -> None:
+    store = InMemoryVectorStore()
+    assert await store.list_chunks() == []
+
+
+@pytest.mark.asyncio
+async def test_inmemory_list_chunks_clears_with_empty_upsert() -> None:
+    store = InMemoryVectorStore()
+    await store.upsert(
+        [Chunk(text="one", source="runbooks/a.md")],
+        FakeEmbedder(),
+    )
+    await store.upsert([], FakeEmbedder())
+    assert await store.list_chunks() == []

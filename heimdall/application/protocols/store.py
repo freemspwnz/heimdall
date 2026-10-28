@@ -8,6 +8,8 @@ from .embedder import Embedder
 class VectorStore(Protocol):
     async def upsert(self, chunks: list[Chunk], embedder: Embedder) -> None: ...
 
+    async def list_chunks(self) -> list[Chunk]: ...
+
     async def search(
         self,
         query: str,

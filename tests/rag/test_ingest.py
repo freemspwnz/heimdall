@@ -194,3 +194,36 @@ async def test_pgvector_search_uses_cosine_distance(
     fetch_sql = conn.fetch.await_args.args[0]
     assert "<=>" in fetch_sql
     assert conn.fetch.await_args.args[2] == 3
+
+
+@pytest.mark.asyncio
+async def test_pgvector_list_chunks_orders_by_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _pg_connection()
+    later = MagicMock()
+    later.__getitem__.side_effect = lambda key: {
+        "source": "runbooks/b.md",
+        "body": "second",
+    }[key]
+    earlier = MagicMock()
+    earlier.__getitem__.side_effect = lambda key: {
+        "source": "runbooks/a.md",
+        "body": "first",
+    }[key]
+    conn.fetch = AsyncMock(return_value=[earlier, later])
+    connect = AsyncMock(return_value=conn)
+    monkeypatch.setattr(
+        "heimdall.infrastructure.store.pgvector.asyncpg.connect",
+        connect,
+    )
+    store = PgVectorStore(DSN)
+    hits = await store.list_chunks()
+    assert hits == [
+        Chunk(text="first", source="runbooks/a.md"),
+        Chunk(text="second", source="runbooks/b.md"),
+    ]
+    fetch_sql = conn.fetch.await_args.args[0]
+    assert "ORDER BY id" in fetch_sql
+    assert "<=>" not in fetch_sql
+    connect.assert_awaited_once_with(DSN)

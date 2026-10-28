@@ -54,6 +54,14 @@ class PgVectorStore:
         finally:
             await conn.close()
 
+    async def list_chunks(self) -> list[Chunk]:
+        conn = await asyncpg.connect(self._dsn)
+        try:
+            rows = await conn.fetch("SELECT source, body FROM chunks ORDER BY id")
+        finally:
+            await conn.close()
+        return [Chunk(text=row["body"], source=row["source"]) for row in rows]
+
     async def search(
         self,
         query: str,
