@@ -103,6 +103,10 @@ def text_turn(content: str) -> ScriptedTurn:
     return ScriptedTurn(content=content)
 
 
+def router_turn(*sources: str) -> ScriptedTurn:
+    return text_turn(json.dumps({"sources": list(sources)}, ensure_ascii=False))
+
+
 def investigate_turns(*calls: ToolCall) -> list[ScriptedTurn]:
     return [ScriptedTurn(tool_calls=list(calls)), text_turn("Факты собраны.")]
 
@@ -210,6 +214,7 @@ def tool_names(chat: FakeChatModel) -> list[list[str]]:
 def postgres_chat() -> FakeChatModel:
     return FakeChatModel(
         [
+            router_turn(),
             *investigate_turns(
                 tool_call("docker_inspect", name="gitea"),
                 tool_call("loki_query", query='{container="postgres"}'),
@@ -312,6 +317,7 @@ async def test_empty_loki_finishes_with_coverage_note() -> None:
     loki = FakeLoki("no streams")
     chat = FakeChatModel(
         [
+            router_turn(),
             *investigate_turns(tool_call("loki_query", query='{container="jellyfin"}')),
             diagnose_turn(0.8),
             propose_turn(None, report="Логов за окно нет."),
@@ -336,6 +342,7 @@ async def test_low_confidence_investigates_exactly_twice() -> None:
     docker = FakeDocker()
     chat = FakeChatModel(
         [
+            router_turn(),
             *investigate_turns(tool_call("docker_ps")),
             diagnose_turn(0.1),
             *investigate_turns(tool_call("docker_ps")),
@@ -373,6 +380,7 @@ async def test_investigate_never_offers_the_restart_tool() -> None:
     await graph.ainvoke(Command(resume="yes"), cfg)
 
     offered = tool_names(chat)
+    assert chat.calls[0]["tools"] is None
     assert all("docker_restart" not in names for names in offered)
     assert any("docker_inspect" in names for names in offered)
     assert any("loki_query" in names for names in offered)
@@ -383,6 +391,7 @@ async def test_investigate_history_keeps_assistant_tool_calls_before_results() -
     inspect = tool_call("docker_inspect", name="postgres")
     chat = FakeChatModel(
         [
+            router_turn(),
             ScriptedTurn(tool_calls=[inspect]),
             text_turn("Факты собраны."),
             diagnose_turn(0.8),
@@ -398,7 +407,7 @@ async def test_investigate_history_keeps_assistant_tool_calls_before_results() -
 
     await graph.ainvoke({"question": POSTGRES_QUESTION}, config("tool-call-history"))
 
-    second_round = chat.calls[1]["messages"]
+    second_round = chat.calls[2]["messages"]
     assert isinstance(second_round, list)
     roles = [message.role for message in second_round]
     assistant_index = roles.index("assistant")
@@ -416,6 +425,7 @@ async def test_investigate_executes_at_most_four_tools_in_one_turn() -> None:
     vm = FakeVictoriaMetrics()
     chat = FakeChatModel(
         [
+            router_turn(),
             ScriptedTurn(
                 tool_calls=[
                     tool_call("docker_ps"),
@@ -447,6 +457,7 @@ async def test_investigate_spends_its_tool_budget_across_rounds() -> None:
     loki = FakeLoki()
     chat = FakeChatModel(
         [
+            router_turn(),
             ScriptedTurn(
                 tool_calls=[
                     tool_call("docker_ps"),
@@ -485,6 +496,7 @@ async def test_tunnel_report_states_remote_vpn_was_not_inspected() -> None:
     docker = FakeDocker()
     chat = FakeChatModel(
         [
+            router_turn(),
             *investigate_turns(
                 tool_call("docker_inspect", name="3x-ui"),
                 tool_call("docker_logs", name="3x-ui"),
@@ -514,6 +526,7 @@ async def test_forbidden_restart_is_dropped() -> None:
     docker = FakeDocker()
     chat = FakeChatModel(
         [
+            router_turn(),
             *investigate_turns(tool_call("docker_logs", name="traefik")),
             diagnose_turn(0.8),
             propose_turn("postgres", report="Бэкенд отдаёт 502."),
@@ -538,6 +551,7 @@ async def test_traefik_backend_restart_is_proposed_for_gitea() -> None:
     docker = FakeDocker()
     chat = FakeChatModel(
         [
+            router_turn(),
             *investigate_turns(
                 tool_call("docker_logs", name="traefik"),
                 tool_call("docker_inspect", name="gitea"),
@@ -568,6 +582,7 @@ async def test_traefik_backend_restart_is_proposed_for_gitea() -> None:
 async def test_graph_investigates_when_embeddings_are_unavailable() -> None:
     chat = FakeChatModel(
         [
+            router_turn(),
             *investigate_turns(
                 tool_call("docker_inspect", name="postgres"),
                 tool_call("loki_query", query='{container="postgres"}'),
@@ -594,9 +609,46 @@ async def test_graph_investigates_when_embeddings_are_unavailable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_graph_loads_named_runbook_without_embeddings() -> None:
+    chat = FakeChatModel(
+        [
+            router_turn("runbooks/postgres.md"),
+            *investigate_turns(
+                tool_call("docker_inspect", name="postgres"),
+                tool_call("loki_query", query='{container="postgres"}'),
+            ),
+            diagnose_turn(0.8),
+            propose_turn(None, report="Диагноз по ранбуку."),
+        ]
+    )
+    graph = await make_graph(
+        chat,
+        docker=FakeDocker(),
+        loki=FakeLoki(),
+        vm=FakeVictoriaMetrics(),
+        embedder=BrokenEmbedder(),
+    )
+
+    final = await graph.ainvoke(
+        {"question": POSTGRES_QUESTION},
+        config("runbook-without-embeddings"),
+    )
+
+    assert final["retrieved_chunks"] == [
+        {
+            "text": "Рестарт postgres рвёт активные соединения.",
+            "source": "runbooks/postgres.md",
+        }
+    ]
+    assert chat.calls[0]["tools"] is None
+    assert final["report"]
+
+
+@pytest.mark.asyncio
 async def test_invalid_confidence_falls_back_to_default() -> None:
     chat = FakeChatModel(
         [
+            router_turn(),
             *investigate_turns(tool_call("docker_ps")),
             diagnose_turn("не знаю"),
             propose_turn(None, report="Нужна ручная проверка."),
