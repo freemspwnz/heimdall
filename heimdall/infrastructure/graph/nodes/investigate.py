@@ -6,7 +6,7 @@ from ...constants import MAX_TOOL_CALLS_PER_ROUND
 from ..prompts import INVESTIGATE_SYSTEM
 from ..state import GraphState, StateUpdate
 from ..tools import READ_TOOLS, Tools
-from .utils import _context, _observation_dict, _system_prompt
+from .utils import _context, _observation_dict
 
 
 def _observation_text(observation: Observation) -> str:
@@ -23,9 +23,7 @@ class investigate:
     async def __call__(self, state: GraphState) -> StateUpdate:
         observations = list(state.get("observations") or [])
         messages = [
-            ChatMessage(
-                role="system", content=_system_prompt(INVESTIGATE_SYSTEM, state)
-            ),
+            ChatMessage(role="system", content=INVESTIGATE_SYSTEM),
             ChatMessage(role="user", content=_context(state)),
         ]
         budget = MAX_TOOL_CALLS_PER_ROUND

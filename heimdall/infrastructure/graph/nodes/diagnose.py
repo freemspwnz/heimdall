@@ -4,7 +4,7 @@ from heimdall.application.protocols import ChatModel
 from ...constants import DEFAULT_CONFIDENCE
 from ..prompts import DIAGNOSE_SYSTEM
 from ..state import GraphState, StateUpdate
-from .utils import _append, _context, _parse_json_object, _system_prompt, _text
+from .utils import _append, _context, _parse_json_object, _text
 
 
 class diagnose:
@@ -14,9 +14,7 @@ class diagnose:
     async def __call__(self, state: GraphState) -> StateUpdate:
         result = await self._chat.complete(
             [
-                ChatMessage(
-                    role="system", content=_system_prompt(DIAGNOSE_SYSTEM, state)
-                ),
+                ChatMessage(role="system", content=DIAGNOSE_SYSTEM),
                 ChatMessage(role="user", content=_context(state)),
             ],
             node="diagnose",

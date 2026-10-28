@@ -8,7 +8,6 @@ from .utils import (
     _facts_block,
     _final_report,
     _observation_dict,
-    _system_prompt,
     _text,
 )
 
@@ -27,9 +26,7 @@ class verify:
             observations.append(_observation_dict(await self._docker.logs(target)))
         result = await self._chat.complete(
             [
-                ChatMessage(
-                    role="system", content=_system_prompt(VERIFY_SYSTEM, state)
-                ),
+                ChatMessage(role="system", content=VERIFY_SYSTEM),
                 ChatMessage(
                     role="user", content=self._verify_context(state, observations)
                 ),

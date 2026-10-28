@@ -10,7 +10,7 @@ from ...constants import NEVER_RESTART
 from ..prompts import PROPOSE_SYSTEM
 from ..state import GraphState, StateUpdate
 from ..tools.registry import DOCKER_INSPECT
-from .utils import _context, _final_report, _parse_json_object, _system_prompt, _text
+from .utils import _context, _final_report, _parse_json_object, _text
 
 
 class propose:
@@ -26,9 +26,7 @@ class propose:
     async def __call__(self, state: GraphState) -> StateUpdate:
         result = await self._chat.complete(
             [
-                ChatMessage(
-                    role="system", content=_system_prompt(PROPOSE_SYSTEM, state)
-                ),
+                ChatMessage(role="system", content=PROPOSE_SYSTEM),
                 ChatMessage(role="user", content=_context(state)),
             ],
             node="propose",

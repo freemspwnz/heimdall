@@ -17,7 +17,6 @@ from tests.support import SilentLogger
 
 POSTGRES_QUESTION = "Что с postgres?"  # noqa: RUF001
 TRAEFIK_QUESTION = "Почему не открывается сервис за traefik?"
-TUNNEL_QUESTION = "Почему отвалился туннель?"
 LOKI_QUESTION = "Почему в логах ничего нет?"
 
 _ids = itertools.count()
@@ -491,36 +490,6 @@ async def test_investigate_spends_its_tool_budget_across_rounds() -> None:
     assert docker.ps_calls == 3
     assert loki.queries == ['{container="postgres"}']
     assert final["confidence"] == 0.8
-
-
-@pytest.mark.asyncio
-async def test_tunnel_report_states_remote_vpn_was_not_inspected() -> None:
-    docker = FakeDocker()
-    chat = FakeChatModel(
-        [
-            router_turn(),
-            *investigate_turns(
-                tool_call("docker_inspect", name="3x-ui"),
-                tool_call("docker_logs", name="3x-ui"),
-            ),
-            diagnose_turn(0.8, report="3x-ui не поднял соединение."),
-            propose_turn("3x-ui"),
-            text_turn(
-                "Было: соединения нет. Сделали: рестарт. Стало: туннель поднялся."
-            ),
-        ]
-    )
-    graph = await make_graph(
-        chat,
-        docker=docker,
-        loki=FakeLoki(),
-        vm=FakeVictoriaMetrics(),
-    )
-    final = await graph.ainvoke({"question": TUNNEL_QUESTION}, config("tunnel-yes"))
-
-    assert final["proposed_action"] is None
-    assert docker.restart_calls == []
-    assert "удалённ" in final["report"].lower()
 
 
 @pytest.mark.asyncio

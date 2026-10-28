@@ -3,16 +3,10 @@ from dataclasses import asdict
 
 from heimdall.domain.models import Observation
 
-from ..prompts import (
-    COVERAGE_NOTE,
-    EMPTY_REPORT,
-    TUNNEL_DISCLAIMER,
-    TUNNEL_PROMPT_RULE,
-)
+from ..prompts import COVERAGE_NOTE, EMPTY_REPORT
 from ..state import GraphState
 
 EMPTY_PAYLOADS = frozenset({"no streams", "no data"})
-TUNNEL_MARKERS = ("туннел", "tunnel", "vpn", "3x-ui")
 
 
 def _observation_dict(observation: Observation) -> dict[str, object]:
@@ -79,17 +73,6 @@ def _call_line(observation: dict[str, object]) -> str:
     return " ".join(parts)
 
 
-def _system_prompt(base: str, state: GraphState) -> str:
-    if _is_tunnel_question(state["question"]):
-        return f"{base}\n{TUNNEL_PROMPT_RULE}"
-    return base
-
-
-def _is_tunnel_question(question: str) -> bool:
-    lowered = question.lower()
-    return any(marker in lowered for marker in TUNNEL_MARKERS)
-
-
 def _final_report(
     state: GraphState,
     report: str,
@@ -99,8 +82,6 @@ def _final_report(
     facts = state.get("observations") or [] if observations is None else observations
     if _has_coverage_gap(facts):
         text = _append(text, COVERAGE_NOTE)
-    if _is_tunnel_question(state["question"]):
-        text = _append(text, TUNNEL_DISCLAIMER)
     return text
 
 
