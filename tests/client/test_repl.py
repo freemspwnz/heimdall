@@ -21,6 +21,7 @@ from heimdall.infrastructure.store import InMemoryVectorStore
 from heimdall.presentation.api.app import create_app
 from heimdall.presentation.cli.repl import AGENT_UNAVAILABLE, ASK_FAILED, run_repl
 from langgraph.checkpoint.memory import MemorySaver
+from tests.support import SilentLogger
 
 POSTGRES_QUESTION = "Что с postgres?"  # noqa: RUF001
 
@@ -116,6 +117,7 @@ def _build(chat: Any, docker: FakeDocker | None = None) -> Any:
             docker=docker if docker is not None else FakeDocker(),
             loki=FakeLoki(),
             vm=FakeVictoriaMetrics(),
+            logger=SilentLogger(),
         ),
         checkpointer=MemorySaver(),
     )

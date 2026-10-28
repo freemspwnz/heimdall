@@ -26,7 +26,7 @@ async def serve() -> int:
             knowledge_dir=c.knowledge_dir,
         )
         host, port = settings.parse_listen(settings.heimdall_listen)
-        config = uvicorn.Config(app, host=host, port=port, log_level="info")
+        config = uvicorn.Config(app, host=host, port=port, log_config=None)
         server = uvicorn.Server(config)
         await server.serve()
     return 0

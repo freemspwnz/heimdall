@@ -1,7 +1,7 @@
 from dataclasses import replace
 
 from heimdall.application.models import ToolCall
-from heimdall.application.protocols import Docker, Loki, VictoriaMetrics
+from heimdall.application.protocols import Docker, Logger, Loki, VictoriaMetrics
 from heimdall.domain.models import Observation
 
 from ...constants import LOG_LOOKBACK, MAX_OBSERVATION_LINES
@@ -14,12 +14,19 @@ class Tools:
         docker: Docker,
         loki: Loki,
         vm: VictoriaMetrics,
+        logger: Logger,
     ) -> None:
         self._docker = docker
         self._loki = loki
         self._vm = vm
+        self._logger = logger
 
     async def __call__(self, call: ToolCall) -> Observation:
+        observation = await self._run(call)
+        self._logger.info(self._observe_line(observation))
+        return observation
+
+    async def _run(self, call: ToolCall) -> Observation:
         arguments = call.arguments
         if call.name == LOKI_QUERY:
             since = self._text(arguments.get("since")) or LOG_LOOKBACK
@@ -95,3 +102,19 @@ class Tools:
         if isinstance(value, str):
             return value
         return ""
+
+    @staticmethod
+    def _observe_line(observation: Observation) -> str:
+        tool = observation.tool or observation.source or "?"
+        parts = [f"observe {tool}"]
+        for label, value in (
+            ("name", observation.target),
+            ("since", observation.since),
+            ("query", observation.query),
+        ):
+            if value:
+                parts.append(f"{label}={value}")
+        flag = "ok" if observation.ok else "err"
+        detail = observation.payload if observation.ok else (observation.error or "")
+        head = detail.replace("\n", " ")[:160]
+        return f"{' '.join(parts)} {flag} {head}".rstrip()

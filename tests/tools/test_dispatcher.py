@@ -10,6 +10,7 @@ from heimdall.infrastructure.graph.tools.registry import (
     LOKI_QUERY,
     VM_QUERY,
 )
+from tests.support import RecordingLogger
 
 
 class _Docker:
@@ -36,8 +37,8 @@ class _Vm:
         return Observation(source="victoriametrics", ok=True, payload=metricsql)
 
 
-def _tools() -> Tools:
-    return Tools(_Docker(), _Loki(), _Vm())
+def _tools(logger: RecordingLogger | None = None) -> Tools:
+    return Tools(_Docker(), _Loki(), _Vm(), logger or RecordingLogger())
 
 
 def _call(tool: str, **arguments: object) -> ToolCall:
@@ -108,3 +109,12 @@ def test_facts_block_prints_call_and_skips_empty_fields() -> None:
     assert "FATAL: x" in text
     assert "target=" not in text
     assert "[docker] ок\nrunning" in text
+
+
+@pytest.mark.asyncio
+async def test_tools_log_observation_line() -> None:
+    recorded = RecordingLogger()
+    tools = _tools(recorded)
+    obs = await tools(_call(DOCKER_INSPECT, name="gitea"))
+    assert obs.ok is True
+    assert recorded.lines == ["observe docker_inspect name=gitea ok gitea"]

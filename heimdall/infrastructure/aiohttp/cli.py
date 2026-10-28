@@ -13,7 +13,7 @@ from heimdall.domain.models import Action
 _ASK_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=10)
 _RESUME_TIMEOUT = aiohttp.ClientTimeout(total=30, sock_connect=10)
 _PROBE_TIMEOUT = aiohttp.ClientTimeout(total=5, sock_connect=5)
-_INGEST_TIMEOUT = aiohttp.ClientTimeout(total=30, sock_connect=10)
+_INGEST_TIMEOUT = aiohttp.ClientTimeout(total=None, sock_connect=10)
 
 
 def make_client_session() -> aiohttp.ClientSession:

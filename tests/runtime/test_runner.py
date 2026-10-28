@@ -13,6 +13,7 @@ from heimdall.infrastructure.graph import LangGraphRunner, build_graph
 from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
 from heimdall.infrastructure.store import InMemoryVectorStore
 from langgraph.checkpoint.memory import MemorySaver
+from tests.support import SilentLogger
 
 POSTGRES_QUESTION = "Что с postgres?"  # noqa: RUF001
 
@@ -108,6 +109,7 @@ def _build(chat: Any, docker: FakeDocker | None = None) -> Any:
             docker=docker if docker is not None else FakeDocker(),
             loki=FakeLoki(),
             vm=FakeVictoriaMetrics(),
+            logger=SilentLogger(),
         ),
         checkpointer=MemorySaver(),
     )

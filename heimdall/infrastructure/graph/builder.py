@@ -24,7 +24,7 @@ def build_graph(
     deps: GraphDeps,
     checkpointer: BaseCheckpointSaver[Any],
 ) -> CompiledStateGraph[GraphState, Any, GraphState, GraphState]:
-    tools = Tools(deps.docker, deps.loki, deps.vm)
+    tools = Tools(deps.docker, deps.loki, deps.vm, deps.logger)
 
     graph: StateGraph[GraphState, Any, GraphState, GraphState] = StateGraph(GraphState)
     graph.add_node(

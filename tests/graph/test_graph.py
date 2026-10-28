@@ -13,6 +13,7 @@ from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
 from heimdall.infrastructure.store import InMemoryVectorStore
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
+from tests.support import SilentLogger
 
 POSTGRES_QUESTION = "Что с postgres?"  # noqa: RUF001
 TRAEFIK_QUESTION = "Почему не открывается сервис за traefik?"
@@ -177,6 +178,7 @@ async def make_graph(
             docker=docker,
             loki=loki,
             vm=vm,
+            logger=SilentLogger(),
         ),
         checkpointer=MemorySaver(),
     )
