@@ -103,7 +103,15 @@ async def test_restart_gitea_allowed() -> None:
 async def test_docker_inspect_returns_container_json() -> None:
     body: dict[str, object] = {
         "Name": "/postgres",
-        "State": {"Status": "running", "Health": {"Status": "healthy"}},
+        "RestartCount": 2,
+        "State": {
+            "Status": "running",
+            "OOMKilled": False,
+            "ExitCode": 0,
+            "StartedAt": "2026-01-01T00:00:00Z",
+            "Health": {"Status": "healthy", "Log": [{"Output": "x" * 5000}]},
+        },
+        "Config": {"Env": ["SECRET=1"]},
     }
     session = MagicMock()
     session.get = MagicMock(return_value=_response(200, body))
@@ -112,7 +120,10 @@ async def test_docker_inspect_returns_container_json() -> None:
     assert obs.ok is True
     assert obs.source == "docker"
     assert "postgres" in obs.payload
-    assert "healthy" in obs.payload.lower() or "running" in obs.payload.lower()
+    assert "healthy" in obs.payload
+    assert "RestartCount" in obs.payload
+    assert "SECRET" not in obs.payload
+    assert "Output" not in obs.payload
     session.get.assert_called_once()
     url = session.get.call_args.args[0]
     assert url == "http://localhost/containers/postgres/json"

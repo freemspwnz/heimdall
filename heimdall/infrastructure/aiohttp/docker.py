@@ -35,6 +35,36 @@ def _ok(payload: str) -> Observation:
     return Observation(source=_SOURCE, ok=True, payload=payload)
 
 
+_STATE_KEYS = (
+    "Status",
+    "Running",
+    "Restarting",
+    "OOMKilled",
+    "Dead",
+    "ExitCode",
+    "Error",
+    "StartedAt",
+    "FinishedAt",
+)
+
+
+def _slim_inspect(parsed: dict[str, object]) -> str:
+    state = parsed.get("State")
+    slim_state: dict[str, object] = {}
+    if isinstance(state, dict):
+        for key in _STATE_KEYS:
+            if key in state:
+                slim_state[key] = state[key]
+        health = state.get("Health")
+        if isinstance(health, dict) and isinstance(health.get("Status"), str):
+            slim_state["Health"] = {"Status": health["Status"]}
+    body: dict[str, object] = {"Name": parsed.get("Name"), "State": slim_state}
+    restart = parsed.get("RestartCount")
+    if isinstance(restart, int) and not isinstance(restart, bool):
+        body["RestartCount"] = restart
+    return json.dumps(body, ensure_ascii=False)
+
+
 class DockerClient:
     def __init__(self, docker_host: str, session: aiohttp.ClientSession) -> None:
         self._docker_host = docker_host
@@ -74,6 +104,12 @@ class DockerClient:
                 text = await resp.text()
                 if resp.status != 200:
                     return _fail(f"{resp.status} {truncate_payload(text)}")
+                try:
+                    parsed: object = json.loads(text)
+                except json.JSONDecodeError:
+                    return _ok(truncate_payload(text))
+                if isinstance(parsed, dict):
+                    return _ok(_slim_inspect(parsed))
                 return _ok(truncate_payload(text))
         except TimeoutError as exc:
             return _fail(str(exc) or "timeout")
