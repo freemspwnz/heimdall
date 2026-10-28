@@ -1,19 +1,22 @@
 import asyncio
 import json
+from typing import cast
 
 import pytest
 from heimdall.application.exceptions import ChatUnavailable, EmbeddingsUnavailable
+from heimdall.application.models import ChatMessage, ChatResult, ToolSpec
 from heimdall.application.protocols import Embedder
 from heimdall.domain.models import Chunk
+from heimdall.infrastructure.constants import RETRIEVE_TOP_K
 from heimdall.infrastructure.embedders import FakeEmbedder
 from heimdall.infrastructure.graph.nodes.retrieve import retrieve
 from heimdall.infrastructure.graph.prompts import ROUTER_SYSTEM
+from heimdall.infrastructure.graph.state import GraphState, StateUpdate
 from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
 from heimdall.infrastructure.store import InMemoryVectorStore
 
-# Тексты фикстуры не содержат ключевых слов FakeEmbedder.
-# Иначе порядок search меняется и проверка «alpha-5 не в пятёрке» врёт.
 QUESTION = "что с alpha?"  # noqa: RUF001
+QUESTION_STATE = cast(GraphState, {"question": QUESTION})
 
 
 class RecordingStore(InMemoryVectorStore):
@@ -56,15 +59,16 @@ class BoomEmbedder:
 class DownChat:
     async def complete(
         self,
-        messages: list[object],
-        tools: list[object] | None = None,
-    ) -> object:
+        messages: list[ChatMessage],
+        tools: list[ToolSpec] | None = None,
+    ) -> ChatResult:
         del messages, tools
         raise ChatUnavailable("down")
 
 
-class ExplodingList:
+class ExplodingList(InMemoryVectorStore):
     def __init__(self, inner: RecordingStore) -> None:
+        super().__init__()
         self._inner = inner
 
     async def list_chunks(self) -> list[Chunk]:
@@ -74,12 +78,12 @@ class ExplodingList:
         self,
         query: str,
         embedder: Embedder,
-        k: int = 5,
+        k: int = RETRIEVE_TOP_K,
     ) -> list[Chunk]:
         return await self._inner.search(query, embedder, k=k)
 
 
-class CancelList:
+class CancelList(InMemoryVectorStore):
     async def list_chunks(self) -> list[Chunk]:
         raise asyncio.CancelledError()
 
@@ -87,7 +91,7 @@ class CancelList:
         self,
         query: str,
         embedder: Embedder,
-        k: int = 5,
+        k: int = RETRIEVE_TOP_K,
     ) -> list[Chunk]:
         del query, embedder, k
         raise AssertionError("search must not run")
@@ -152,13 +156,13 @@ async def run(
     store: InMemoryVectorStore,
     content: str,
     embedder: Embedder | None = None,
-) -> tuple[dict[str, object], FakeChatModel]:
+) -> tuple[StateUpdate, FakeChatModel]:
     chat = FakeChatModel([ScriptedTurn(content=content)])
     update = await retrieve(
         store,
         embedder if embedder is not None else FakeEmbedder(),
         chat,
-    )({"question": QUESTION})
+    )(QUESTION_STATE)
     return update, chat
 
 
@@ -245,6 +249,7 @@ async def test_duplicate_section_key_keeps_the_first_section() -> None:
     ]
     await store.upsert(chunks, FakeEmbedder())
     update, _chat = await run(store, answer(["runbooks/alpha.md"]))
+    assert isinstance(update["retrieved_chunks"], list)
     texts = [item["text"] for item in update["retrieved_chunks"]]
     assert any("first section" in text for text in texts)
     assert all("second section" not in text for text in texts)
@@ -272,6 +277,7 @@ async def test_shared_section_is_attached_once() -> None:
         store,
         answer(["runbooks/alpha.md", "notes/alpha.md"]),
     )
+    assert isinstance(update["retrieved_chunks"], list)
     texts = [item["text"] for item in update["retrieved_chunks"]]
     assert texts == [
         "runbooks/alpha.md\n# Alpha\n\nfrom runbooks",
@@ -299,15 +305,15 @@ async def test_unusable_router_answer_searches_and_drops_the_tail(
     update, chat = await run(store, content)
     assert store.searches == 1
     assert len(chat.calls) == 1
-    texts = [item["text"] for item in update["retrieved_chunks"]]
-    assert all("alpha-5" not in text for text in texts)
+    assert isinstance(update["retrieved_chunks"], list)
+    assert len(update["retrieved_chunks"]) == RETRIEVE_TOP_K
 
 
 @pytest.mark.asyncio
 async def test_empty_catalog_skips_the_model_and_searches() -> None:
     store = RecordingStore()
     chat = FakeChatModel([ScriptedTurn(content=answer(["runbooks/alpha.md"]))])
-    update = await retrieve(store, FakeEmbedder(), chat)({"question": QUESTION})
+    update = await retrieve(store, FakeEmbedder(), chat)(QUESTION_STATE)
     assert chat.calls == []
     assert store.searches == 1
     assert update["retrieved_chunks"] == []
@@ -321,7 +327,7 @@ async def test_inventory_only_catalog_skips_the_model() -> None:
         FakeEmbedder(),
     )
     chat = FakeChatModel([ScriptedTurn(content=answer(["inventory.md"]))])
-    update = await retrieve(store, FakeEmbedder(), chat)({"question": QUESTION})
+    update = await retrieve(store, FakeEmbedder(), chat)(QUESTION_STATE)
     assert chat.calls == []
     assert store.searches == 1
     assert update["retrieved_chunks"] == [
@@ -332,27 +338,27 @@ async def test_inventory_only_catalog_skips_the_model() -> None:
 @pytest.mark.asyncio
 async def test_chat_exception_falls_back_to_search() -> None:
     store, _chunks = await loaded()
-    update = await retrieve(store, FakeEmbedder(), DownChat())({"question": QUESTION})
+    update = await retrieve(store, FakeEmbedder(), DownChat())(QUESTION_STATE)
     assert store.searches == 1
-    texts = [item["text"] for item in update["retrieved_chunks"]]
-    assert all("alpha-5" not in text for text in texts)
+    assert isinstance(update["retrieved_chunks"], list)
+    assert len(update["retrieved_chunks"]) == RETRIEVE_TOP_K
 
 
 @pytest.mark.asyncio
 async def test_list_chunks_exception_falls_back_to_search() -> None:
     store, _chunks = await loaded()
-    await retrieve(ExplodingList(store), FakeEmbedder(), DownChat())(
-        {"question": QUESTION}
+    update = await retrieve(ExplodingList(store), FakeEmbedder(), DownChat())(
+        QUESTION_STATE
     )
     assert store.searches == 1
+    assert isinstance(update["retrieved_chunks"], list)
+    assert len(update["retrieved_chunks"]) == RETRIEVE_TOP_K
 
 
 @pytest.mark.asyncio
 async def test_cancelled_list_chunks_propagates() -> None:
     with pytest.raises(asyncio.CancelledError):
-        await retrieve(CancelList(), FakeEmbedder(), DownChat())(
-            {"question": QUESTION}
-        )
+        await retrieve(CancelList(), FakeEmbedder(), DownChat())(QUESTION_STATE)
 
 
 @pytest.mark.asyncio

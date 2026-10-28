@@ -4,11 +4,11 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
 from heimdall.application.models import RunEvent
 
-from ..builder import CompiledGraph
 from ..state import GraphState
 from .state import is_interrupted, pending_action, report
 
@@ -17,7 +17,9 @@ BROKEN_PROPOSAL = "агент предложил действие, которо�
 
 
 class LangGraphRunner:
-    def __init__(self, graph: CompiledGraph) -> None:
+    def __init__(
+        self, graph: CompiledStateGraph[GraphState, Any, GraphState, GraphState]
+    ) -> None:
         self._graph = graph
         self._lock = asyncio.Lock()
         self._waiting: dict[str, asyncio.Future[bool]] = {}

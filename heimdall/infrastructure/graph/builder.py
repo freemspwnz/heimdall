@@ -18,14 +18,12 @@ from .nodes import (
 from .state import GraphState
 from .tools import Tools
 
-CompiledGraph = CompiledStateGraph[GraphState, Any, GraphState, GraphState]
-
 
 def build_graph(
     *,
     deps: GraphDeps,
     checkpointer: BaseCheckpointSaver[Any],
-) -> CompiledGraph:
+) -> CompiledStateGraph[GraphState, Any, GraphState, GraphState]:
     tools = Tools(deps.docker, deps.loki, deps.vm)
 
     graph: StateGraph[GraphState, Any, GraphState, GraphState] = StateGraph(GraphState)

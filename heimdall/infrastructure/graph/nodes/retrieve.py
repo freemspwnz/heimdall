@@ -17,10 +17,6 @@ _TITLE = re.compile(r"^#{1,6}\s+\S")
 _SECTION = re.compile(r"^#{2,}\s+(\S+)")
 
 
-def _chunk_dict(chunk: Chunk) -> dict[str, object]:
-    return asdict(chunk)
-
-
 class retrieve:
     def __init__(
         self,
@@ -40,7 +36,7 @@ class retrieve:
         chosen = await self._choose(state["question"], chunks)
         if not chosen:
             return await self._search(state)
-        return {"retrieved_chunks": [_chunk_dict(chunk) for chunk in chosen]}
+        return {"retrieved_chunks": [asdict(chunk) for chunk in chosen]}
 
     async def _choose(self, question: str, chunks: list[Chunk]) -> list[Chunk]:
         grouped = _group(chunks)
@@ -86,7 +82,7 @@ class retrieve:
             )
         except EmbeddingsUnavailable:
             chunks = []
-        return {"retrieved_chunks": [_chunk_dict(chunk) for chunk in chunks]}
+        return {"retrieved_chunks": [asdict(chunk) for chunk in chunks]}
 
 
 def _group(chunks: list[Chunk]) -> dict[str, list[Chunk]]:
@@ -102,9 +98,7 @@ def _router_user(
     routable: list[str],
 ) -> str:
     sections = _inventory_sections(grouped.get(_INVENTORY, []))
-    blocks = [
-        _catalog_block(source, grouped[source], sections) for source in routable
-    ]
+    blocks = [_catalog_block(source, grouped[source], sections) for source in routable]
     return f"Вопрос: {question}\n\nКаталог:\n\n" + "\n\n".join(blocks)  # noqa: RUF001
 
 
