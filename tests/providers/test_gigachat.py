@@ -9,6 +9,7 @@ from heimdall.infrastructure.aiohttp import GigaChatClient
 from heimdall.infrastructure.embedders import FakeEmbedder, GigaChatEmbedder
 from heimdall.infrastructure.llms import FakeChatModel, GigaChatChatModel, ScriptedTurn
 from heimdall.infrastructure.settings import Settings
+from tests.support import RecordingLogger
 
 
 def _settings() -> Settings:
@@ -47,7 +48,14 @@ def _model(
     posts: list[MagicMock],
 ) -> tuple[GigaChatChatModel, MagicMock]:
     session = _session(posts)
-    return GigaChatChatModel(settings, GigaChatClient(settings, session)), session
+    return (
+        GigaChatChatModel(
+            settings,
+            GigaChatClient(settings, session),
+            RecordingLogger(),
+        ),
+        session,
+    )
 
 
 def _embedder(
@@ -416,3 +424,60 @@ async def test_fake_embedder_keyword_bag_of_words() -> None:
     assert vectors[0][8] == 1.0  # restart
     assert vectors[1][7] == 1.0  # jellyfin
     assert vectors[1][0] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_gigachat_chat_logs_request_and_response() -> None:
+    settings = _settings()
+    session = _session(
+        [
+            _oauth("tok-1"),
+            _response(
+                200,
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "контейнер\nжив",
+                                "function_call": {
+                                    "name": "docker_inspect",
+                                    "arguments": {"name": "postgres"},
+                                },
+                            }
+                        }
+                    ]
+                },
+            ),
+        ]
+    )
+    recorded = RecordingLogger()
+    model = GigaChatChatModel(settings, GigaChatClient(settings, session), recorded)
+    await model.complete(
+        [ChatMessage(role="user", content="как дела")],
+        tools=[
+            ToolSpec(
+                name="docker_inspect",
+                description="inspect",
+                parameters={"type": "object"},
+            )
+        ],
+    )
+    assert recorded.lines[0] == (
+        "model request model=GigaChat-3-Ultra messages=1 "
+        "roles=user tools=docker_inspect"
+    )
+    assert recorded.lines[1] == (
+        'model response tool_calls=docker_inspect({"name": "postgres"}) '
+        "content=контейнер жив"
+    )
+
+
+@pytest.mark.asyncio
+async def test_gigachat_chat_logs_failure_and_reraises() -> None:
+    settings = _settings()
+    session = _session([_oauth("tok-1"), _response(503, "busy")])
+    recorded = RecordingLogger()
+    model = GigaChatChatModel(settings, GigaChatClient(settings, session), recorded)
+    with pytest.raises(ChatUnavailable):
+        await model.complete([ChatMessage(role="user", content="q")])
+    assert recorded.lines[-1] == "model call failed model=GigaChat-3-Ultra"

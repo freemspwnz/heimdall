@@ -13,6 +13,7 @@ from heimdall.application.protocols import (
     ChatModel,
     Docker,
     Embedder,
+    Logger,
     Loki,
     VectorStore,
     VictoriaMetrics,
@@ -21,6 +22,7 @@ from heimdall.application.protocols import (
 from .aiohttp import DockerClient, GigaChatClient, LokiClient, VictoriaMetricsClient
 from .embedders import GigaChatEmbedder, LocalEmbedder, load_sentence_transformer
 from .llms import GigaChatChatModel
+from .logger import get_logger
 from .settings import Settings
 from .store import PgVectorStore
 
@@ -33,6 +35,7 @@ class GraphDeps:
     docker: Docker
     loki: Loki
     vm: VictoriaMetrics
+    logger: Logger
 
 
 class Container:
@@ -78,8 +81,12 @@ class Container:
         )
 
     @cached_property
+    def logger(self) -> Logger:
+        return get_logger(self._settings)
+
+    @cached_property
     def chat(self) -> ChatModel:
-        return GigaChatChatModel(self._settings, self._gigachat)
+        return GigaChatChatModel(self._settings, self._gigachat, self.logger)
 
     @cached_property
     def docker(self) -> Docker:
@@ -110,6 +117,7 @@ class Container:
             docker=self.docker,
             loki=self.loki,
             vm=self.vm,
+            logger=self.logger,
         )
 
     @cached_property
