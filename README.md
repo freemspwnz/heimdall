@@ -61,9 +61,9 @@ cp .env.example .env
 mkdir -p data/hf && touch data/heimdall-checkpoints.sqlite
 ```
 
-Edit `.env` for Compose: Loki, VictoriaMetrics, and Postgres URLs must use **Docker DNS names** of services on the lab network (e.g. `http://loki:3100`, `postgresql://…@postgres:5432/heimdall`). `127.0.0.1` works only for host `uv run`, not inside the container. See commented examples in `.env.example`.
+Edit `.env` for Compose: Loki, VictoriaMetrics, and Postgres URLs must use **Docker DNS names** of services on the monitoring network (e.g. `http://loki:3100`, `postgresql://…@postgres:5432/heimdall`). `127.0.0.1` works only for host `uv run`, not inside the container. See commented examples in `.env.example`.
 
-The compose file joins an **external** network (`HEIMDALL_LAB_NETWORK`, default `lab`) so the guest can reach Loki, Postgres, and the rest of the stack by service name.
+The compose file joins an **external** network (`HEIMDALL_NETWORK`, default `monitoring`) so the guest can reach Loki, Postgres, and the rest of the stack by service name.
 
 **Checkpoint file:** `./data/heimdall-checkpoints.sqlite` is bind-mounted into the container. Create the empty file with `touch` before the first run — otherwise Docker may create a directory at that path.
 
