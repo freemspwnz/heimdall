@@ -2,8 +2,16 @@ from ..constants import (
     CONFIDENCE_RETRY_THRESHOLD,
     DEFAULT_CONFIDENCE,
     MAX_INVESTIGATE_ROUNDS,
+    REPORT_QUESTION_KINDS,
 )
 from .state import GraphState
+
+
+def after_investigate(state: GraphState) -> str:
+    kind = state.get("question_kind")
+    if kind in REPORT_QUESTION_KINDS:
+        return "answer"
+    return "diagnose"
 
 
 def after_diagnose(state: GraphState) -> str:

@@ -1,3 +1,4 @@
+from .answer import answer
 from .classify import classify
 from .confirm import confirm
 from .diagnose import diagnose
@@ -8,6 +9,7 @@ from .retrieve import retrieve
 from .verify import verify
 
 __all__ = [
+    "answer",
     "classify",
     "confirm",
     "diagnose",
