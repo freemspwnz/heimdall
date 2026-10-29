@@ -57,6 +57,8 @@ def _state(observations: list[dict[str, object]]) -> GraphState:
         "human_decision": None,
         "execution_result": None,
         "report": None,
+        "investigation_notes": None,
+        "investigate_gained_observations": False,
     }
 
 

@@ -22,16 +22,19 @@ class investigate:
 
     async def __call__(self, state: GraphState) -> StateUpdate:
         observations = list(state.get("observations") or [])
+        before = len(observations)
         messages = [
             ChatMessage(role="system", content=INVESTIGATE_SYSTEM),
             ChatMessage(role="user", content=_context(state)),
         ]
         budget = MAX_TOOL_CALLS_PER_ROUND
+        notes_delta = ""
         while budget > 0:
             result = await self._chat.complete(
                 messages, tools=READ_TOOLS, node="investigate"
             )
             if not result.tool_calls:
+                notes_delta = (result.content or "").strip()
                 break
             calls = result.tool_calls[:budget]
             budget -= len(calls)
@@ -53,5 +56,16 @@ class investigate:
                         name=call.name,
                     )
                 )
+        previous = (state.get("investigation_notes") or "").strip()
+        if notes_delta:
+            notes = f"{previous}\n\n{notes_delta}" if previous else notes_delta
+        else:
+            notes = state.get("investigation_notes")
+
         rounds = state.get("investigate_rounds") or 0
-        return {"investigate_rounds": rounds + 1, "observations": observations}
+        return {
+            "investigate_rounds": rounds + 1,
+            "observations": observations,
+            "investigation_notes": notes,
+            "investigate_gained_observations": len(observations) > before,
+        }

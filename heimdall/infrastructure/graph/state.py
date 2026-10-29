@@ -14,3 +14,5 @@ class GraphState(TypedDict):
     human_decision: str | None
     execution_result: dict[str, object] | None
     report: str | None
+    investigation_notes: str | None
+    investigate_gained_observations: bool
