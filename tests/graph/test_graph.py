@@ -367,6 +367,32 @@ async def test_low_confidence_investigates_exactly_twice() -> None:
 
 
 @pytest.mark.asyncio
+async def test_investigate_notes_reach_report_without_tools() -> None:
+    chat = FakeChatModel(
+        [
+            router_turn(),
+            text_turn("В метриках и логах видны postgres и loki."),
+            diagnose_turn(0.1, report="В метриках и логах видны postgres и loki."),
+            propose_turn(None, report="В метриках и логах видны postgres и loki."),
+        ]
+    )
+    graph = await make_graph(
+        chat,
+        docker=FakeDocker(),
+        loki=FakeLoki(),
+        vm=FakeVictoriaMetrics(),
+    )
+    final = await graph.ainvoke(
+        {"question": "какие сервисы видишь в логах и метриках, не используй docker"},
+        config("notes-meta"),
+    )
+    assert final["investigate_rounds"] == 1
+    assert final["investigation_notes"] == "В метриках и логах видны postgres и loki."
+    assert "postgres" in (final["report"] or "")
+    assert "Нет информации о текущем состоянии" not in (final["report"] or "")
+
+
+@pytest.mark.asyncio
 async def test_investigate_never_offers_the_restart_tool() -> None:
     chat = postgres_chat()
     graph = await make_graph(
