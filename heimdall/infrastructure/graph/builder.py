@@ -32,7 +32,7 @@ def build_graph(
     graph.add_node("classify", classify(deps.chat, deps.logger))
     graph.add_node(
         "retrieve",
-        retrieve(deps.retriever, deps.embedder, deps.chat, deps.logger),
+        retrieve(deps.retriever, deps.embedder, deps.logger),
     )
     graph.add_node("investigate", investigate(deps.chat, tools))
     graph.add_node("answer", answer(deps.chat))

@@ -1,20 +1,8 @@
-import re
-from dataclasses import asdict
-from pathlib import PurePosixPath
-
 from heimdall.application.exceptions import EmbeddingsUnavailable
-from heimdall.application.models import ChatMessage
-from heimdall.application.protocols import ChatModel, Embedder, Logger, VectorStore
-from heimdall.domain.models import Chunk
+from heimdall.application.protocols import Embedder, Logger, VectorStore
 
 from ...constants import RETRIEVE_TOP_K
-from ..prompts import ROUTER_SYSTEM
 from ..state import GraphState, StateUpdate
-from .utils import _parse_json_object
-
-_INVENTORY = "inventory.md"
-_TITLE = re.compile(r"^#{1,6}\s+\S")
-_SECTION = re.compile(r"^#{2,}\s+(\S+)")
 
 
 class retrieve:
@@ -22,66 +10,19 @@ class retrieve:
         self,
         retriever: VectorStore,
         embedder: Embedder,
-        chat: ChatModel,
         logger: Logger,
     ) -> None:
         self._retriever = retriever
         self._embedder = embedder
-        self._chat = chat
         self._logger = logger
 
     async def __call__(self, state: GraphState) -> StateUpdate:
-        self._logger.info(
-            "question {}",
-            state["question"].replace("\n", " "),
-        )
-        try:
-            chunks = await self._retriever.list_chunks()
-        except Exception:
-            return await self._search(state)
-        chosen = await self._choose(state["question"], chunks)
-        if not chosen:
-            return await self._search(state)
-        return _log_sources(
-            self._logger,
-            {"retrieved_chunks": [asdict(chunk) for chunk in chosen]},
-        )
-
-    async def _choose(self, question: str, chunks: list[Chunk]) -> list[Chunk]:
-        grouped = _group(chunks)
-        routable = [source for source in grouped if source != _INVENTORY]
-        if not routable:
-            return []
-        try:
-            result = await self._chat.complete(
-                [
-                    ChatMessage(role="system", content=ROUTER_SYSTEM),
-                    ChatMessage(
-                        role="user",
-                        content=_router_user(question, grouped, routable),
-                    ),
-                ],
-                node="retrieve",
-            )
-        except Exception:
-            return []
-        selected = _selected_sources(result.content, set(routable))
-        if not selected:
-            return []
-        sections = _inventory_sections(grouped.get(_INVENTORY, []))
-        attached: set[str] = set()
-        chosen: list[Chunk] = []
-        for source in selected:
-            chosen.extend(grouped[source])
-            key = PurePosixPath(source).stem.casefold()
-            if key in attached:
-                continue
-            section = sections.get(key)
-            if section is None:
-                continue
-            chosen.extend(section)
-            attached.add(key)
-        return chosen
+        question = state["question"]
+        self._logger.info("question {}", question.replace("\n", " "))
+        loaded = _read_runbooks(state.get("runbooks"))
+        if loaded:
+            return _log_sources(self._logger, {"retrieved_chunks": loaded})
+        return await self._search(state)
 
     async def _search(self, state: GraphState) -> StateUpdate:
         try:
@@ -94,8 +35,37 @@ class retrieve:
             chunks = []
         return _log_sources(
             self._logger,
-            {"retrieved_chunks": [asdict(chunk) for chunk in chunks]},
+            {
+                "retrieved_chunks": [
+                    {"text": chunk.text, "source": chunk.source} for chunk in chunks
+                ]
+            },
         )
+
+
+def _read_runbooks(raw: object) -> list[dict[str, str]]:
+    from ..paths import RUNBOOKS_DIR
+
+    if not isinstance(raw, list):
+        return []
+    loaded: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str) or not _bare_name(item) or item in seen:
+            continue
+        seen.add(item)
+        try:
+            text = (RUNBOOKS_DIR / item).read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        loaded.append({"text": text, "source": f"runbooks/{item}"})
+    return loaded
+
+
+def _bare_name(name: str) -> bool:
+    return (
+        bool(name) and name not in {".", ".."} and "/" not in name and "\\" not in name
+    )
 
 
 def _log_sources(logger: Logger, update: StateUpdate) -> StateUpdate:
@@ -112,92 +82,3 @@ def _log_sources(logger: Logger, update: StateUpdate) -> StateUpdate:
                 names.append(source)
     logger.info("sources={}", ",".join(names))
     return update
-
-
-def _group(chunks: list[Chunk]) -> dict[str, list[Chunk]]:
-    grouped: dict[str, list[Chunk]] = {}
-    for chunk in chunks:
-        grouped.setdefault(chunk.source, []).append(chunk)
-    return grouped
-
-
-def _router_user(
-    question: str,
-    grouped: dict[str, list[Chunk]],
-    routable: list[str],
-) -> str:
-    sections = _inventory_sections(grouped.get(_INVENTORY, []))
-    blocks = [_catalog_block(source, grouped[source], sections) for source in routable]
-    return f"Вопрос: {question}\n\nКаталог:\n\n" + "\n\n".join(blocks)  # noqa: RUF001
-
-
-def _catalog_block(
-    source: str,
-    chunks: list[Chunk],
-    sections: dict[str, list[Chunk]],
-) -> str:
-    lines = [f"source: {source}"]
-    title = _title(chunks)
-    if title is not None:
-        lines.append(f"title: {title}")
-    section = sections.get(PurePosixPath(source).stem.casefold())
-    if section is not None:
-        lines.append(_section_body(section))
-    return "\n".join(lines)
-
-
-def _title(chunks: list[Chunk]) -> str | None:
-    for chunk in chunks:
-        for line in chunk.text.splitlines():
-            if _TITLE.match(line):
-                return line
-    return None
-
-
-def _section_body(chunks: list[Chunk]) -> str:
-    parts: list[str] = []
-    for chunk in chunks:
-        lines = chunk.text.splitlines()
-        if lines and lines[0] == chunk.source:
-            lines = lines[1:]
-        parts.append("\n".join(lines))
-    return "\n".join(parts)
-
-
-def _inventory_sections(chunks: list[Chunk]) -> dict[str, list[Chunk]]:
-    sections: dict[str, list[Chunk]] = {}
-    current_key: str | None = None
-    for chunk in chunks:
-        opened = _section_key(chunk)
-        if opened is not None:
-            if opened in sections:
-                current_key = None
-            else:
-                current_key = opened
-                sections[opened] = [chunk]
-            continue
-        if current_key is not None:
-            sections[current_key].append(chunk)
-    return sections
-
-
-def _section_key(chunk: Chunk) -> str | None:
-    for line in chunk.text.splitlines():
-        match = _SECTION.match(line)
-        if match is not None:
-            return match.group(1).casefold()
-    return None
-
-
-def _selected_sources(content: str | None, catalog: set[str]) -> list[str]:
-    raw = _parse_json_object(content).get("sources")
-    if not isinstance(raw, list):
-        return []
-    chosen: list[str] = []
-    seen: set[str] = set()
-    for item in raw:
-        if not isinstance(item, str) or item not in catalog or item in seen:
-            continue
-        seen.add(item)
-        chosen.append(item)
-    return chosen

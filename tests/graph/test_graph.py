@@ -1,5 +1,6 @@
 import itertools
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -116,10 +117,6 @@ def answer_turn(report: str) -> ScriptedTurn:
     return text_turn(json.dumps({"report": report}, ensure_ascii=False))
 
 
-def router_turn(*sources: str) -> ScriptedTurn:
-    return text_turn(json.dumps({"sources": list(sources)}, ensure_ascii=False))
-
-
 def investigate_turns(*calls: ToolCall) -> list[ScriptedTurn]:
     return [ScriptedTurn(tool_calls=list(calls)), text_turn("Факты собраны.")]
 
@@ -229,7 +226,6 @@ def postgres_chat() -> FakeChatModel:
     return FakeChatModel(
         [
             classify_turn(),
-            router_turn(),
             *investigate_turns(
                 tool_call("docker_inspect", name="gitea"),
                 tool_call("loki_query", query='{container="postgres"}'),
@@ -333,7 +329,6 @@ async def test_empty_loki_finishes_with_coverage_note() -> None:
     chat = FakeChatModel(
         [
             classify_turn(),
-            router_turn(),
             *investigate_turns(tool_call("loki_query", query='{container="jellyfin"}')),
             diagnose_turn(0.8),
             propose_turn(None, report="Логов за окно нет."),
@@ -359,7 +354,6 @@ async def test_low_confidence_investigates_exactly_twice() -> None:
     chat = FakeChatModel(
         [
             classify_turn(),
-            router_turn(),
             *investigate_turns(tool_call("docker_ps")),
             diagnose_turn(0.1),
             *investigate_turns(tool_call("docker_ps")),
@@ -387,7 +381,6 @@ async def test_status_path_answers_without_hitl() -> None:
     chat = FakeChatModel(
         [
             classify_turn("status"),
-            router_turn(),
             text_turn("В метриках и логах видны postgres и loki."),  # noqa: RUF001
             answer_turn("В метриках и логах видны postgres и loki."),  # noqa: RUF001
         ]
@@ -409,8 +402,8 @@ async def test_status_path_answers_without_hitl() -> None:
     assert final.get("human_decision") is None
     assert "postgres" in (final["report"] or "")
     assert "Нет информации о текущем состоянии" not in (final["report"] or "")  # noqa: RUF001
-    # classify=0, retrieve=1, investigate=2, answer=3
-    answer_messages = chat.calls[3]["messages"]
+    # classify=0, investigate=1, answer=2
+    answer_messages = chat.calls[2]["messages"]
     assert isinstance(answer_messages, list)
     assert "Заметки расследования:" in answer_messages[1].content
 
@@ -420,7 +413,6 @@ async def test_diagnose_path_still_reaches_propose() -> None:
     chat = FakeChatModel(
         [
             classify_turn("diagnose"),
-            router_turn(),
             *investigate_turns(tool_call("docker_ps")),
             diagnose_turn(0.9, report="Контейнер нездоров."),
             propose_turn(None, report="Контейнер нездоров."),
@@ -457,7 +449,6 @@ async def test_investigate_never_offers_the_restart_tool() -> None:
 
     offered = tool_names(chat)
     assert chat.calls[0]["tools"] is None
-    assert chat.calls[1]["tools"] is None
     assert all("docker_restart" not in names for names in offered)
     assert any("docker_inspect" in names for names in offered)
     assert any("loki_query" in names for names in offered)
@@ -469,7 +460,6 @@ async def test_investigate_history_keeps_assistant_tool_calls_before_results() -
     chat = FakeChatModel(
         [
             classify_turn(),
-            router_turn(),
             ScriptedTurn(tool_calls=[inspect]),
             text_turn("Факты собраны."),
             diagnose_turn(0.8),
@@ -485,7 +475,7 @@ async def test_investigate_history_keeps_assistant_tool_calls_before_results() -
 
     await graph.ainvoke({"question": POSTGRES_QUESTION}, config("tool-call-history"))
 
-    second_round = chat.calls[3]["messages"]
+    second_round = chat.calls[2]["messages"]
     assert isinstance(second_round, list)
     roles = [message.role for message in second_round]
     assistant_index = roles.index("assistant")
@@ -504,7 +494,6 @@ async def test_investigate_executes_at_most_four_tools_in_one_turn() -> None:
     chat = FakeChatModel(
         [
             classify_turn(),
-            router_turn(),
             ScriptedTurn(
                 tool_calls=[
                     tool_call("docker_ps"),
@@ -537,7 +526,6 @@ async def test_investigate_spends_its_tool_budget_across_rounds() -> None:
     chat = FakeChatModel(
         [
             classify_turn(),
-            router_turn(),
             ScriptedTurn(
                 tool_calls=[
                     tool_call("docker_ps"),
@@ -577,7 +565,6 @@ async def test_forbidden_restart_is_dropped() -> None:
     chat = FakeChatModel(
         [
             classify_turn(),
-            router_turn(),
             *investigate_turns(tool_call("docker_logs", name="traefik")),
             diagnose_turn(0.8),
             propose_turn("postgres", report="Бэкенд отдаёт 502."),
@@ -603,7 +590,6 @@ async def test_traefik_backend_restart_is_proposed_for_gitea() -> None:
     chat = FakeChatModel(
         [
             classify_turn(),
-            router_turn(),
             *investigate_turns(
                 tool_call("docker_logs", name="traefik"),
                 tool_call("docker_inspect", name="gitea"),
@@ -635,7 +621,6 @@ async def test_graph_investigates_when_embeddings_are_unavailable() -> None:
     chat = FakeChatModel(
         [
             classify_turn(),
-            router_turn(),
             *investigate_turns(
                 tool_call("docker_inspect", name="postgres"),
                 tool_call("loki_query", query='{container="postgres"}'),
@@ -662,11 +647,19 @@ async def test_graph_investigates_when_embeddings_are_unavailable() -> None:
 
 
 @pytest.mark.asyncio
-async def test_graph_loads_named_runbook_without_embeddings() -> None:
+async def test_graph_loads_named_runbook_without_embeddings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    body = "Рестарт postgres рвёт активные соединения."
+    (tmp_path / "postgres.md").write_text(body, encoding="utf-8")
+    monkeypatch.setattr(
+        "heimdall.infrastructure.graph.paths.RUNBOOKS_DIR",
+        tmp_path,
+    )
     chat = FakeChatModel(
         [
-            classify_turn(),
-            router_turn("runbooks/postgres.md"),
+            classify_turn("diagnose", "postgres.md"),
             *investigate_turns(
                 tool_call("docker_inspect", name="postgres"),
                 tool_call("loki_query", query='{container="postgres"}'),
@@ -689,12 +682,8 @@ async def test_graph_loads_named_runbook_without_embeddings() -> None:
     )
 
     assert final["retrieved_chunks"] == [
-        {
-            "text": "Рестарт postgres рвёт активные соединения.",
-            "source": "runbooks/postgres.md",
-        }
+        {"text": body, "source": "runbooks/postgres.md"},
     ]
-    assert chat.calls[1]["tools"] is None
     assert final["report"]
 
 
@@ -703,7 +692,6 @@ async def test_invalid_confidence_falls_back_to_default() -> None:
     chat = FakeChatModel(
         [
             classify_turn(),
-            router_turn(),
             *investigate_turns(tool_call("docker_ps")),
             diagnose_turn("не знаю"),
             propose_turn(None, report="Нужна ручная проверка."),
