@@ -11,6 +11,10 @@ def after_diagnose(state: GraphState) -> str:
     value = DEFAULT_CONFIDENCE if confidence is None else confidence
     rounds = state.get("investigate_rounds") or 0
     if value < CONFIDENCE_RETRY_THRESHOLD and rounds < MAX_INVESTIGATE_ROUNDS:
+        notes = (state.get("investigation_notes") or "").strip()
+        gained = bool(state.get("investigate_gained_observations"))
+        if notes and not gained:
+            return "propose"
         return "investigate"
     return "propose"
 

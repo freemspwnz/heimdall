@@ -1,5 +1,6 @@
 import pytest
 from heimdall.application.models import ToolCall
+from heimdall.infrastructure.graph.edges import after_diagnose
 from heimdall.infrastructure.graph.nodes.investigate import investigate
 from heimdall.infrastructure.graph.nodes.utils import _context
 from heimdall.infrastructure.graph.state import GraphState
@@ -87,3 +88,39 @@ def test_context_includes_investigation_notes() -> None:
 def test_context_omits_notes_section_when_empty() -> None:
     text = _context(_base_state(investigation_notes=None))
     assert "Заметки расследования:" not in text
+
+
+def test_after_diagnose_skips_retry_when_notes_without_new_facts() -> None:
+    route = after_diagnose(
+        _base_state(
+            confidence=0.1,
+            investigate_rounds=1,
+            investigation_notes="Вижу сервисы без docker.",
+            investigate_gained_observations=False,
+        )
+    )
+    assert route == "propose"
+
+
+def test_after_diagnose_retries_when_gained_observations() -> None:
+    route = after_diagnose(
+        _base_state(
+            confidence=0.1,
+            investigate_rounds=1,
+            investigation_notes="Частичные факты.",
+            investigate_gained_observations=True,
+        )
+    )
+    assert route == "investigate"
+
+
+def test_after_diagnose_retries_when_notes_empty_and_no_gain() -> None:
+    route = after_diagnose(
+        _base_state(
+            confidence=0.1,
+            investigate_rounds=1,
+            investigation_notes=None,
+            investigate_gained_observations=False,
+        )
+    )
+    assert route == "investigate"
