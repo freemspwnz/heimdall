@@ -8,3 +8,6 @@ DEFAULT_CONFIDENCE = 0.7
 RETRIEVE_TOP_K = 5
 LOG_LOOKBACK = "15m"
 NEVER_RESTART = frozenset({"postgres", "redis", "traefik", "3x-ui", "adguardhome"})
+QUESTION_KINDS = frozenset({"meta", "status", "diagnose", "action"})
+DEFAULT_QUESTION_KIND = "diagnose"
+REPORT_QUESTION_KINDS = frozenset({"meta", "status"})

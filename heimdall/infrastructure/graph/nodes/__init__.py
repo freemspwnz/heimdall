@@ -1,3 +1,4 @@
+from .classify import classify
 from .confirm import confirm
 from .diagnose import diagnose
 from .execute import execute
@@ -7,6 +8,7 @@ from .retrieve import retrieve
 from .verify import verify
 
 __all__ = [
+    "classify",
     "confirm",
     "diagnose",
     "execute",

@@ -137,4 +137,5 @@ class LangGraphRunner:
             report=None,
             investigation_notes=None,
             investigate_gained_observations=False,
+            question_kind=None,
         )

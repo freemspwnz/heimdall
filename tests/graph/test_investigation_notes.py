@@ -24,6 +24,7 @@ def _base_state(**overrides: object) -> GraphState:
         "report": None,
         "investigation_notes": None,
         "investigate_gained_observations": False,
+        "question_kind": None,
     }
     state.update(overrides)  # type: ignore[typeddict-item]
     return state
