@@ -26,6 +26,7 @@ class classify:
             if raw in QUESTION_KINDS:
                 kind = raw
         except Exception:
+            self._logger.exception("classify failed; defaulting to diagnose")
             kind = DEFAULT_QUESTION_KIND
         self._logger.info("question_kind={}", kind)
         return {"question_kind": kind}

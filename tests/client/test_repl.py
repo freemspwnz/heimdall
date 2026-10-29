@@ -65,9 +65,7 @@ def tool_call(tool: str, **arguments: object) -> ToolCall:
 
 
 def classify_turn(kind: str = "diagnose") -> ScriptedTurn:
-    return ScriptedTurn(
-        content=json.dumps({"question_kind": kind}, ensure_ascii=False)
-    )
+    return ScriptedTurn(content=json.dumps({"question_kind": kind}, ensure_ascii=False))
 
 
 def diagnose_turn() -> ScriptedTurn:

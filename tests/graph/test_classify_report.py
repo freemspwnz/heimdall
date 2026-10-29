@@ -33,9 +33,7 @@ def _base_state(**overrides: object) -> GraphState:
 
 
 def _kind_turn(kind: str) -> ScriptedTurn:
-    return ScriptedTurn(
-        content=json.dumps({"question_kind": kind}, ensure_ascii=False)
-    )
+    return ScriptedTurn(content=json.dumps({"question_kind": kind}, ensure_ascii=False))
 
 
 class _RaisingChat:
@@ -75,9 +73,11 @@ async def test_classify_rejects_non_json() -> None:
 
 @pytest.mark.asyncio
 async def test_classify_exception_defaults_to_diagnose() -> None:
-    node = classify(_RaisingChat(), SilentLogger())  # type: ignore[arg-type]
+    logger = RecordingLogger()
+    node = classify(_RaisingChat(), logger)  # type: ignore[arg-type]
     update = await node(_base_state())
     assert update == {"question_kind": DEFAULT_QUESTION_KIND}
+    assert any("classify failed" in line for line in logger.lines)
 
 
 def test_after_investigate_routes_status_to_answer() -> None:
@@ -98,7 +98,7 @@ async def test_answer_writes_report_from_notes() -> None:
         [
             ScriptedTurn(
                 content=json.dumps(
-                    {"report": "В метриках видны postgres и loki."},
+                    {"report": "В метриках видны postgres и loki."},  # noqa: RUF001
                     ensure_ascii=False,
                 )
             )

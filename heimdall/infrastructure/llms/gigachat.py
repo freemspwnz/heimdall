@@ -55,7 +55,7 @@ class GigaChatChatModel:
             raise
         result = self._parse_chat_result(parsed)
         content = (result.content or "").replace("\n", " ")
-        if node not in {"diagnose", "propose"}:
+        if node not in {"diagnose", "propose", "answer"}:
             content = content[:160]
         calls = ",".join(
             f"{call.name}({json.dumps(call.arguments, ensure_ascii=False)})"

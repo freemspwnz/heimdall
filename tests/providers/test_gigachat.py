@@ -482,6 +482,7 @@ async def test_diagnose_logs_full_content_and_investigate_truncates() -> None:
             _oauth("tok-1"),
             _response(200, {"choices": [{"message": {"content": body}}]}),
             _response(200, {"choices": [{"message": {"content": body}}]}),
+            _response(200, {"choices": [{"message": {"content": body}}]}),
         ]
     )
     recorded = RecordingLogger()
@@ -492,11 +493,16 @@ async def test_diagnose_logs_full_content_and_investigate_truncates() -> None:
     )
     await model.complete(
         [ChatMessage(role="user", content="q")],
+        node="answer",
+    )
+    await model.complete(
+        [ChatMessage(role="user", content="q")],
         node="investigate",
     )
     flat = "А" * 180 + " хвост"  # noqa: RUF001
     assert recorded.lines[1] == f"model response tool_calls= content={flat}"
-    assert recorded.lines[3] == ("model response tool_calls= content=" + flat[:160])
+    assert recorded.lines[3] == f"model response tool_calls= content={flat}"
+    assert recorded.lines[5] == ("model response tool_calls= content=" + flat[:160])
 
 
 @pytest.mark.asyncio
