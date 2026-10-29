@@ -59,6 +59,12 @@ def tool_call(tool: str, **arguments: object) -> ToolCall:
     return ToolCall(id=f"call-{next(_ids)}", name=tool, arguments=dict(arguments))
 
 
+def classify_turn(kind: str = "diagnose") -> ScriptedTurn:
+    return ScriptedTurn(
+        content=json.dumps({"question_kind": kind}, ensure_ascii=False)
+    )
+
+
 def diagnose_turn() -> ScriptedTurn:
     return ScriptedTurn(
         content=json.dumps(
@@ -94,6 +100,7 @@ def propose_turn(target: str | None) -> ScriptedTurn:
 def postgres_chat(target: str | None = "gitea") -> FakeChatModel:
     return FakeChatModel(
         [
+            classify_turn(),
             ScriptedTurn(tool_calls=[tool_call("docker_inspect", name="gitea")]),
             ScriptedTurn(content="Факты собраны."),
             diagnose_turn(),
@@ -130,6 +137,7 @@ def _app(graph: LangGraphRunner) -> Any:
 def graph_without_proposal() -> Any:
     chat = FakeChatModel(
         [
+            classify_turn(),
             ScriptedTurn(content="Факты собраны."),
             diagnose_turn(),
             propose_turn(None),
