@@ -1,6 +1,7 @@
 import pytest
 from heimdall.application.models import ToolCall
 from heimdall.infrastructure.graph.nodes.investigate import investigate
+from heimdall.infrastructure.graph.nodes.utils import _context
 from heimdall.infrastructure.graph.state import GraphState
 from heimdall.infrastructure.graph.tools import Tools
 from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
@@ -75,3 +76,14 @@ async def test_investigate_keeps_notes_when_final_content_empty() -> None:
     update = await node(_base_state(investigation_notes="Уже было."))
     assert update["investigation_notes"] == "Уже было."
     assert update["investigate_gained_observations"] is False
+
+
+def test_context_includes_investigation_notes() -> None:
+    text = _context(_base_state(investigation_notes="Краткий итог без tools."))
+    assert "Заметки расследования:" in text
+    assert "Краткий итог без tools." in text
+
+
+def test_context_omits_notes_section_when_empty() -> None:
+    text = _context(_base_state(investigation_notes=None))
+    assert "Заметки расследования:" not in text

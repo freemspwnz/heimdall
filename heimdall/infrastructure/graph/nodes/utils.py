@@ -18,13 +18,15 @@ def _context(
     observations: list[dict[str, object]] | None = None,
 ) -> str:
     facts = state.get("observations") or [] if observations is None else observations
-    return "\n\n".join(
-        [
-            f"Вопрос: {state['question']}",
-            f"Знания из инвентаря и runbook:\n{_chunks_block(state)}",
-            f"Наблюдения:\n{_facts_block(facts)}",
-        ]
-    )
+    notes = _text(state.get("investigation_notes")).strip()
+    parts = [
+        f"Вопрос: {state['question']}",
+        f"Знания из инвентаря и runbook:\n{_chunks_block(state)}",
+        f"Наблюдения:\n{_facts_block(facts)}",
+    ]
+    if notes:
+        parts.append(f"Заметки расследования:\n{notes}")
+    return "\n\n".join(parts)
 
 
 def _chunks_block(state: GraphState) -> str:
