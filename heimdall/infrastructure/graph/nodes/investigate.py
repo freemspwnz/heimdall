@@ -57,10 +57,9 @@ class investigate:
                     )
                 )
         previous = (state.get("investigation_notes") or "").strip()
+        notes: str | None = state.get("investigation_notes")
         if notes_delta:
             notes = f"{previous}\n\n{notes_delta}" if previous else notes_delta
-        else:
-            notes = state.get("investigation_notes")
 
         rounds = state.get("investigate_rounds") or 0
         return {

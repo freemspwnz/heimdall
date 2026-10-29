@@ -371,9 +371,9 @@ async def test_investigate_notes_reach_report_without_tools() -> None:
     chat = FakeChatModel(
         [
             router_turn(),
-            text_turn("В метриках и логах видны postgres и loki."),
-            diagnose_turn(0.1, report="В метриках и логах видны postgres и loki."),
-            propose_turn(None, report="В метриках и логах видны postgres и loki."),
+            text_turn("В метриках и логах видны postgres и loki."),  # noqa: RUF001
+            diagnose_turn(0.1, report="В метриках и логах видны postgres и loki."),  # noqa: RUF001
+            propose_turn(None, report="В метриках и логах видны postgres и loki."),  # noqa: RUF001
         ]
     )
     graph = await make_graph(
@@ -387,9 +387,12 @@ async def test_investigate_notes_reach_report_without_tools() -> None:
         config("notes-meta"),
     )
     assert final["investigate_rounds"] == 1
-    assert final["investigation_notes"] == "В метриках и логах видны postgres и loki."
+    assert final["investigation_notes"] == "В метриках и логах видны postgres и loki."  # noqa: RUF001
     assert "postgres" in (final["report"] or "")
-    assert "Нет информации о текущем состоянии" not in (final["report"] or "")
+    assert "Нет информации о текущем состоянии" not in (final["report"] or "")  # noqa: RUF001
+    diagnose_messages = chat.calls[2]["messages"]
+    assert isinstance(diagnose_messages, list)
+    assert "Заметки расследования:" in diagnose_messages[1].content
 
 
 @pytest.mark.asyncio

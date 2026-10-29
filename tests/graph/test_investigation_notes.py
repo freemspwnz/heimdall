@@ -67,7 +67,7 @@ async def test_investigate_appends_notes_across_rounds() -> None:
     update = await node(
         _base_state(investigation_notes="Первый проход.", investigate_rounds=1)
     )
-    assert update["investigation_notes"] == "Первый проход.\n\nВторой проход."
+    assert update["investigation_notes"] == "Первый проход.\n\nВторой проход."  # noqa: RUF001
 
 
 @pytest.mark.asyncio
