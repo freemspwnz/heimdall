@@ -232,6 +232,24 @@ async def test_classify_skips_unreadable_file(
 
 
 @pytest.mark.asyncio
+async def test_classify_skips_invalid_utf8_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_runbooks(monkeypatch, tmp_path)
+    _write(tmp_path, "postgres.md", POSTGRES)
+    (tmp_path / "bad.md").write_bytes(b"# Bad\n\n## When\nsecret-utf8\xff\n")
+    chat = FakeChatModel([_kind_turn("diagnose", ["postgres.md"])])
+    update = await classify(chat, SilentLogger())(_base_state())
+    user = chat.calls[0]["messages"][1].content
+    assert "secret-utf8" not in user
+    assert "bad.md" not in user
+    assert "postgres.md" in user
+    assert len(chat.calls) == 1
+    assert update == {"question_kind": "diagnose", "runbooks": ["postgres.md"]}
+
+
+@pytest.mark.asyncio
 async def test_classify_keeps_exact_names_and_valid_kind(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

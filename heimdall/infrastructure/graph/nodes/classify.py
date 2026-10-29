@@ -46,10 +46,9 @@ class classify:
 
 
 def _catalog() -> list[tuple[str, str]]:
-    # Per call, so a patched paths.RUNBOOKS_DIR is visible without a package cycle.
-    from ..paths import RUNBOOKS_DIR
+    from .. import paths
 
-    directory = RUNBOOKS_DIR
+    directory = paths.RUNBOOKS_DIR
     try:
         candidates = sorted(
             (path for path in directory.glob("*.md") if path.is_file()),
@@ -61,7 +60,7 @@ def _catalog() -> list[tuple[str, str]]:
     for path in candidates:
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeError):
             continue
         entries.append((path.name, _catalog_block(path.name, text)))
     return entries
