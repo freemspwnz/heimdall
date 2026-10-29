@@ -46,9 +46,9 @@ class classify:
 
 
 def _catalog() -> list[tuple[str, str]]:
-    from .. import paths
+    from ..paths import RUNBOOKS_DIR
 
-    directory = paths.RUNBOOKS_DIR
+    directory = RUNBOOKS_DIR
     try:
         candidates = sorted(
             (path for path in directory.glob("*.md") if path.is_file()),
