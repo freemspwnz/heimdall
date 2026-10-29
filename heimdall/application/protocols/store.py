@@ -1,6 +1,6 @@
 from typing import Protocol
 
-from heimdall.domain import Chunk
+from heimdall.domain.models import Chunk
 
 from .embedder import Embedder
 

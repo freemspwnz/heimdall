@@ -15,7 +15,6 @@ from heimdall.domain.models import Observation
 from heimdall.infrastructure.aiohttp import AgentClient, make_client_session
 from heimdall.infrastructure.deps import GraphDeps
 from heimdall.infrastructure.embedders import FakeEmbedder
-from heimdall.infrastructure.files import chunk_markdown, load_file
 from heimdall.infrastructure.graph import LangGraphRunner, build_graph
 from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
 from heimdall.infrastructure.store import InMemoryVectorStore
@@ -134,8 +133,6 @@ def _app(graph: LangGraphRunner) -> Any:
         graph=graph,
         store=InMemoryVectorStore(),
         embedder=FakeEmbedder(),
-        chunker=chunk_markdown,
-        loader=load_file,
         knowledge_dir=Path("docs/knowledge"),
     )
 
@@ -425,8 +422,6 @@ async def test_repl_ingest_prints_chunk_count(
         graph=LangGraphRunner(graph_without_proposal()),
         store=InMemoryVectorStore(),
         embedder=FakeEmbedder(),
-        chunker=chunk_markdown,
-        loader=load_file,
         knowledge_dir=knowledge,
     )
     answers: Iterator[str] = iter(["ingest", "exit"])
@@ -453,8 +448,6 @@ async def test_repl_ingest_reports_missing_directory(
         graph=LangGraphRunner(graph_without_proposal()),
         store=InMemoryVectorStore(),
         embedder=FakeEmbedder(),
-        chunker=chunk_markdown,
-        loader=load_file,
         knowledge_dir=tmp_path / "missing",
     )
     answers: Iterator[str] = iter(["ingest", "exit"])

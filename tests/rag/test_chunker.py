@@ -1,4 +1,4 @@
-from heimdall.infrastructure.files import chunk_markdown
+from heimdall.domain.chunker import chunk_markdown
 
 
 def test_chunk_markdown_splits_on_h2_headings() -> None:

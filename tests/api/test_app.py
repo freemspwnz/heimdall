@@ -10,7 +10,6 @@ from heimdall.application.models import ToolCall
 from heimdall.domain.models import Observation
 from heimdall.infrastructure.deps import GraphDeps
 from heimdall.infrastructure.embedders import FakeEmbedder
-from heimdall.infrastructure.files import chunk_markdown, load_file
 from heimdall.infrastructure.graph import LangGraphRunner, build_graph
 from heimdall.infrastructure.llms import FakeChatModel, ScriptedTurn
 from heimdall.infrastructure.store import InMemoryVectorStore
@@ -129,8 +128,6 @@ def _app(graph: LangGraphRunner) -> Any:
         graph=graph,
         store=InMemoryVectorStore(),
         embedder=FakeEmbedder(),
-        chunker=chunk_markdown,
-        loader=load_file,
         knowledge_dir=Path("docs/knowledge"),
     )
 
@@ -266,8 +263,6 @@ async def test_ingest_missing_directory_returns_400(tmp_path: Path) -> None:
         graph=LangGraphRunner(graph_without_proposal()),
         store=InMemoryVectorStore(),
         embedder=FakeEmbedder(),
-        chunker=chunk_markdown,
-        loader=load_file,
         knowledge_dir=tmp_path / "missing",
     )
     transport = ASGITransport(app=app)

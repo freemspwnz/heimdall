@@ -1,6 +1,6 @@
 import re
 
-from heimdall.domain.models import Chunk
+from .models import Chunk
 
 _MAX_SECTION_CHARS = 800
 _SECTION_HEADING = re.compile(r"^#{2,}\s")

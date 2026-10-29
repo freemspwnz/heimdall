@@ -11,10 +11,8 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from heimdall.application.protocols import (
     ChatModel,
-    Chunker,
     Docker,
     Embedder,
-    Loader,
     Logger,
     Loki,
     VectorStore,
@@ -23,7 +21,6 @@ from heimdall.application.protocols import (
 
 from .aiohttp import DockerClient, GigaChatClient, LokiClient, VictoriaMetricsClient
 from .embedders import GigaChatEmbedder, LocalEmbedder, load_sentence_transformer
-from .files import chunk_markdown, load_file
 from .llms import GigaChatChatModel
 from .logger import get_logger
 from .settings import Settings
@@ -106,14 +103,6 @@ class Container:
     @property
     def checkpointer(self) -> BaseCheckpointSaver[Any]:
         return self._checkpointer
-
-    @cached_property
-    def chunker(self) -> Chunker:
-        return chunk_markdown
-
-    @cached_property
-    def loader(self) -> Loader:
-        return load_file
 
     @cached_property
     def knowledge_dir(self) -> Path:

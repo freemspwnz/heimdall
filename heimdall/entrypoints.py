@@ -23,8 +23,6 @@ async def serve() -> int:
             graph=runner,
             store=c.store,
             embedder=c.embedder,
-            chunker=c.chunker,
-            loader=c.loader,
             knowledge_dir=c.knowledge_dir,
         )
         host, port = settings.parse_listen(settings.heimdall_listen)

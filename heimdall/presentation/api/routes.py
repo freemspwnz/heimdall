@@ -51,8 +51,6 @@ async def ingest(request: Request) -> dict[str, int]:
             request.app.state.knowledge_dir,
             request.app.state.store,
             request.app.state.embedder,
-            request.app.state.chunker,
-            request.app.state.loader,
         )
     except KnowledgeUnavailable as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

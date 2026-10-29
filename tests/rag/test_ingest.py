@@ -7,7 +7,6 @@ from heimdall.application.use_cases.ingest import ingest
 from heimdall.domain.models import Chunk
 from heimdall.infrastructure.embedders import FakeEmbedder
 from heimdall.infrastructure.embedders.fake import KEYWORDS
-from heimdall.infrastructure.files import chunk_markdown, load_file
 from heimdall.infrastructure.store import InMemoryVectorStore, PgVectorStore
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[2] / "docs" / "knowledge"
@@ -48,7 +47,7 @@ def _pg_connection() -> AsyncMock:
 async def test_ingest_knowledge_retrieves_tunnel_runbook() -> None:
     store = InMemoryVectorStore()
     embedder = FakeEmbedder()
-    count = await ingest(KNOWLEDGE_DIR, store, embedder, chunk_markdown, load_file)
+    count = await ingest(KNOWLEDGE_DIR, store, embedder)
     assert count > 0
     hits = await store.search(TUNNEL_QUERY, embedder)
     blob = " ".join(hit.text for hit in hits)
@@ -64,9 +63,7 @@ async def test_ingest_missing_directory_keeps_existing_chunks(tmp_path: Path) ->
         embedder,
     )
     with pytest.raises(KnowledgeUnavailable, match="not found"):
-        await ingest(
-            tmp_path / "missing", store, embedder, chunk_markdown, load_file
-        )
+        await ingest(tmp_path / "missing", store, embedder)
     assert await store.search("postgres", embedder)
 
 
@@ -81,7 +78,7 @@ async def test_ingest_empty_directory_keeps_existing_chunks(tmp_path: Path) -> N
     empty = tmp_path / "knowledge"
     empty.mkdir()
     with pytest.raises(KnowledgeUnavailable, match="empty"):
-        await ingest(empty, store, embedder, chunk_markdown, load_file)
+        await ingest(empty, store, embedder)
     assert await store.search("postgres", embedder)
 
 
@@ -89,9 +86,7 @@ async def test_ingest_empty_directory_keeps_existing_chunks(tmp_path: Path) -> N
 async def test_ingest_knowledge_propagates_embeddings_unavailable() -> None:
     store = InMemoryVectorStore()
     with pytest.raises(EmbeddingsUnavailable):
-        await ingest(
-            KNOWLEDGE_DIR, store, _UnavailableEmbedder(), chunk_markdown, load_file
-        )
+        await ingest(KNOWLEDGE_DIR, store, _UnavailableEmbedder())
 
 
 @pytest.mark.asyncio
