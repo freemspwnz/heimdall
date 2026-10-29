@@ -103,8 +103,13 @@ def text_turn(content: str) -> ScriptedTurn:
     return ScriptedTurn(content=content)
 
 
-def classify_turn(kind: str = "diagnose") -> ScriptedTurn:
-    return text_turn(json.dumps({"question_kind": kind}, ensure_ascii=False))
+def classify_turn(kind: str = "diagnose", *runbooks: str) -> ScriptedTurn:
+    return text_turn(
+        json.dumps(
+            {"question_kind": kind, "runbooks": list(runbooks)},
+            ensure_ascii=False,
+        )
+    )
 
 
 def answer_turn(report: str) -> ScriptedTurn:

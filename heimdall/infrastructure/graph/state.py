@@ -17,3 +17,4 @@ class GraphState(TypedDict):
     investigation_notes: str | None
     investigate_gained_observations: bool
     question_kind: str | None
+    runbooks: list[str]

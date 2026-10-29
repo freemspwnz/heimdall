@@ -56,8 +56,13 @@ def tool_call(tool: str, **arguments: object) -> ToolCall:
     return ToolCall(id=f"call-{next(_ids)}", name=tool, arguments=dict(arguments))
 
 
-def classify_turn(kind: str = "diagnose") -> ScriptedTurn:
-    return ScriptedTurn(content=json.dumps({"question_kind": kind}, ensure_ascii=False))
+def classify_turn(kind: str = "diagnose", *runbooks: str) -> ScriptedTurn:
+    return ScriptedTurn(
+        content=json.dumps(
+            {"question_kind": kind, "runbooks": list(runbooks)},
+            ensure_ascii=False,
+        )
+    )
 
 
 def diagnose_turn() -> ScriptedTurn:
