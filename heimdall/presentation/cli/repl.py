@@ -1,4 +1,5 @@
 import asyncio
+import readline  # noqa: F401  # side-effect: hook GNU readline into input()
 from collections.abc import Awaitable, Callable
 
 import aiohttp

@@ -226,6 +226,14 @@ async def test_client_ask_and_resume_hitl(
         return
 
 
+def test_repl_module_loads_readline() -> None:
+    import sys
+
+    import heimdall.presentation.cli.repl as repl  # noqa: F401
+
+    assert "readline" in sys.modules
+
+
 @pytest.mark.asyncio
 async def test_repl_confirms_hitl(
     serve_app: Callable[[Any], AsyncIterator[str]],
