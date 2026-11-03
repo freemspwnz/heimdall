@@ -7,6 +7,8 @@ from heimdall.infrastructure.graph.nodes.preflight import preflight
 from heimdall.infrastructure.graph.tools import READ_TOOLS
 from tests.support import RecordingLogger, SilentLogger
 
+RUNBOOKS_DIR = Path(__file__).resolve().parents[2] / "docs" / "knowledge" / "runbooks"
+
 
 class RecordingTools:
     def __init__(self) -> None:
@@ -221,14 +223,13 @@ async def test_tool_exception_continues() -> None:
 
 
 async def test_demo_knowledge_fences_use_read_tools() -> None:
-    runbooks = Path(__file__).resolve().parents[2] / "docs" / "knowledge" / "runbooks"
     allowed_names = {tool.name for tool in READ_TOOLS}
 
     for filename in ("postgres.md", "traefik.md", "host.md", "redis.md"):
         tools = RecordingTools()
         node = preflight(tools, SilentLogger())
 
-        result = await node(_state(text=(runbooks / filename).read_text()))
+        result = await node(_state(text=(RUNBOOKS_DIR / filename).read_text()))
 
         assert tools.calls, filename
         assert {call.name for call in tools.calls} <= allowed_names
