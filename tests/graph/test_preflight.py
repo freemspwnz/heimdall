@@ -60,6 +60,39 @@ async def test_closed_fence_runs_and_strips() -> None:
     assert tools.calls[1].arguments == {"name": "postgres"}
 
 
+async def test_multiple_closed_fences_run_top_to_bottom() -> None:
+    tools = RecordingTools()
+    node = preflight(tools, SilentLogger())
+    state = _state(
+        text=(
+            "before\n"
+            "```heimdall-calls\n"
+            "docker_inspect name=postgres\n"
+            "```\n"
+            "between\n"
+            "```heimdall-calls\n"
+            'loki_query query={container="postgres"} since=30m\n'
+            "docker_ps\n"
+            "```\n"
+            "after"
+        )
+    )
+
+    result = await node(state)
+
+    assert result["retrieved_chunks"][0]["text"] == "before\nbetween\nafter"
+    assert [call.name for call in tools.calls] == [
+        "docker_inspect",
+        "loki_query",
+        "docker_ps",
+    ]
+    assert [call.id for call in tools.calls] == [
+        "preflight-1",
+        "preflight-2",
+        "preflight-3",
+    ]
+
+
 async def test_quoted_value_and_first_equals() -> None:
     tools = RecordingTools()
     node = preflight(tools, SilentLogger())
@@ -188,14 +221,15 @@ async def test_tool_exception_continues() -> None:
 
 
 async def test_demo_knowledge_fences_use_read_tools() -> None:
-    runbooks = Path("docs/knowledge/runbooks")
+    runbooks = Path(__file__).resolve().parents[2] / "docs" / "knowledge" / "runbooks"
     allowed_names = {tool.name for tool in READ_TOOLS}
 
     for filename in ("postgres.md", "traefik.md", "host.md", "redis.md"):
         tools = RecordingTools()
         node = preflight(tools, SilentLogger())
 
-        await node(_state(text=(runbooks / filename).read_text()))
+        result = await node(_state(text=(runbooks / filename).read_text()))
 
         assert tools.calls, filename
         assert {call.name for call in tools.calls} <= allowed_names
+        assert all(observation.get("ok") for observation in result["observations"])

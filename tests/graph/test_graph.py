@@ -728,6 +728,7 @@ async def test_preflight_runs_disk_fence_before_investigate(
     assert docker.inspect_calls == ["postgres"]
     assert len(final["observations"]) == 1
     assert final["observations"][0]["tool"] == "docker_inspect"
+    assert final["investigate_gained_observations"] is False
     assert len(chat.calls) == 4
     investigate_messages = chat.calls[1]["messages"]
     assert isinstance(investigate_messages, list)
