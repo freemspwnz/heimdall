@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
 
 ### Breaking
 
@@ -11,6 +11,14 @@
 
 - Compose healthcheck: the service is healthy once `HEIMDALL_URL/health` answers
 - Makefile targets for local lint, typecheck, and tests
+- Server logging for model requests/responses, tool observations, and the context the model saw
+- `classify` picks `question_kind` (`meta` / `status` / `diagnose` / `action`) and runbook file names in one call
+- Report-only path: `meta` / `status` finish in `answer` without propose or HITL
+- `investigation_notes` keep investigate's final prose for diagnose, propose, and answer
+- File-by-source retrieve: selected runbooks load whole from disk; vector search is fallback only
+- `preflight` runs closed `heimdall-calls` fences from disk-loaded runbooks before investigate (outside the per-round tool budget)
+- Demo `heimdall-calls` examples plus `host` / `redis` runbooks under `docs/knowledge`
+- Vector store can list indexed chunks in ingest order
 
 ### Fixed
 
@@ -18,6 +26,16 @@
 - REPL `ingest` prints the chunk count, and a refusal prints the server detail instead of `ClientResponseError: 400`
 - GigaChat access token is reused only while more than five minutes remain, and a request is retried once after 401
 - `sentence-transformers` is imported only when the local embedder loads, so CI and the slim image do not need that group
+- Restart only when this turn's `docker inspect` shows the target down (exited / dead / restarting / unhealthy); never restart `postgres`, `redis`, `traefik`, `3x-ui`, or `adguardhome`
+- Observations record the tool name plus target / query / window so later nodes can match facts to a container
+- Docker inspect observations keep container state instead of the full inspect blob
+- Loki log lines keep the container label
+- Compose joins the monitoring network; listen address and client URL follow the environment
+- Report prompt asks for status on informational questions
+- Dropped hard-coded tunnel disclaimer and prompt rules; limits live in runbooks
+- REPL Cyrillic editing: `readline` plus UTF-8 locale in the image (no `PYTHONIOENCODING`)
+- Skip a second investigate round when notes exist but no new observations arrived
+- Skip undecodable runbook files when building the classify catalog
 
 ### Changed
 
@@ -27,6 +45,7 @@
 - A disconnected SSE ask declines the pending HITL run through `decide`
 - Tunnel inventory and the restart allowlist cover 3x-ui only; sing-box is no longer part of this host's docs
 - mypy typechecks langgraph imports (`py.typed` is shipped by the package)
+- Graph path is `retrieve → preflight → investigate`; a diagnose retry re-enters investigate without preflight
 
 ## [0.3.0]
 
