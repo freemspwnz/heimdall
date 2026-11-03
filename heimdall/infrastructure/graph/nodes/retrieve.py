@@ -43,22 +43,28 @@ class retrieve:
         )
 
     @staticmethod
-    def _read_runbooks(raw: object) -> list[dict[str, str]]:
+    def _read_runbooks(raw: object) -> list[dict[str, object]]:
         from ..paths import RUNBOOKS_DIR
 
         if not isinstance(raw, list):
             return []
-        loaded: list[dict[str, str]] = []
+        loaded: list[dict[str, object]] = []
         seen: set[str] = set()
         for item in raw:
-            if not isinstance(item, str) or not _bare_name(item) or item in seen:
+            if not isinstance(item, str) or not retrieve._bare_name(item) or item in seen:
                 continue
             seen.add(item)
             try:
                 text = (RUNBOOKS_DIR / item).read_text(encoding="utf-8")
             except (OSError, UnicodeError):
                 continue
-            loaded.append({"text": text, "source": f"runbooks/{item}"})
+            loaded.append(
+                {
+                    "text": text,
+                    "source": f"runbooks/{item}",
+                    "from_disk": True,
+                }
+            )
         return loaded
 
 
@@ -78,8 +84,11 @@ class retrieve:
         logger.info("sources={}", ",".join(names))
         return update
 
-
-def _bare_name(name: str) -> bool:
-    return (
-        bool(name) and name not in {".", ".."} and "/" not in name and "\\" not in name
-    )
+    @staticmethod
+    def _bare_name(name: str) -> bool:
+        return (
+            bool(name)
+            and name not in {".", ".."}
+            and "/" not in name
+            and "\\" not in name
+        )

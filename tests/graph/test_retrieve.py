@@ -100,8 +100,8 @@ async def test_reads_files_in_order_without_search(
     )
     assert store.searches == 0
     assert update["retrieved_chunks"] == [
-        {"text": "delta body", "source": "runbooks/delta.md"},
-        {"text": "alpha body", "source": "runbooks/alpha.md"},
+        {"text": "delta body", "source": "runbooks/delta.md", "from_disk": True},
+        {"text": "alpha body", "source": "runbooks/alpha.md", "from_disk": True},
     ]
 
 
@@ -127,7 +127,7 @@ async def test_bad_name_and_missing_file_keep_the_rest(
     )
     assert store.searches == 0
     assert update["retrieved_chunks"] == [
-        {"text": "alpha body", "source": "runbooks/alpha.md"},
+        {"text": "alpha body", "source": "runbooks/alpha.md", "from_disk": True},
     ]
 
 
@@ -142,7 +142,7 @@ async def test_empty_file_counts_as_read(
     update = await retrieve(store, FakeEmbedder(), SilentLogger())(_state(["empty.md"]))
     assert store.searches == 0
     assert update["retrieved_chunks"] == [
-        {"text": "", "source": "runbooks/empty.md"},
+        {"text": "", "source": "runbooks/empty.md", "from_disk": True},
     ]
 
 
@@ -198,7 +198,7 @@ async def test_loaded_file_does_not_need_embeddings(
     update = await retrieve(store, DownEmbedder(), SilentLogger())(_state(["alpha.md"]))
     assert store.searches == 0
     assert update["retrieved_chunks"] == [
-        {"text": "alpha body", "source": "runbooks/alpha.md"},
+        {"text": "alpha body", "source": "runbooks/alpha.md", "from_disk": True},
     ]
 
 

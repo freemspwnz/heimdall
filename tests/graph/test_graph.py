@@ -682,7 +682,7 @@ async def test_graph_loads_named_runbook_without_embeddings(
     )
 
     assert final["retrieved_chunks"] == [
-        {"text": body, "source": "runbooks/postgres.md"},
+        {"text": body, "source": "runbooks/postgres.md", "from_disk": True},
     ]
     assert final["report"]
 
