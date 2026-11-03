@@ -697,7 +697,7 @@ async def test_preflight_runs_disk_fence_before_investigate(
         "```heimdall-calls\n"
         "docker_inspect name=postgres\n"
         "```\n"
-        "Сопоставить результат с симптомами."
+        "Сопоставить результат с симптомами."  # noqa: RUF001
     )
     (tmp_path / "demo.md").write_text(body, encoding="utf-8")
     monkeypatch.setattr(
@@ -731,8 +731,10 @@ async def test_preflight_runs_disk_fence_before_investigate(
     assert len(chat.calls) == 4
     investigate_messages = chat.calls[1]["messages"]
     assert isinstance(investigate_messages, list)
-    assert "```heimdall-calls" not in investigate_messages[1].content
-    assert "postgres" in investigate_messages[1].content
+    content = investigate_messages[1].content
+    assert "```heimdall-calls" not in content
+    assert "docker_inspect" in content
+    assert "unhealthy" in content
 
 
 @pytest.mark.asyncio
