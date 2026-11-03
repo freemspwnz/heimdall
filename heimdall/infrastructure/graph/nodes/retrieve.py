@@ -51,7 +51,11 @@ class retrieve:
         loaded: list[dict[str, object]] = []
         seen: set[str] = set()
         for item in raw:
-            if not isinstance(item, str) or not retrieve._bare_name(item) or item in seen:
+            if (
+                not isinstance(item, str)
+                or not retrieve._bare_name(item)
+                or item in seen
+            ):
                 continue
             seen.add(item)
             try:
@@ -66,7 +70,6 @@ class retrieve:
                 }
             )
         return loaded
-
 
     @staticmethod
     def _log_sources(logger: Logger, update: StateUpdate) -> StateUpdate:

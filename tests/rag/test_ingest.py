@@ -10,7 +10,7 @@ from heimdall.infrastructure.embedders.fake import KEYWORDS
 from heimdall.infrastructure.store import InMemoryVectorStore, PgVectorStore
 
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[2] / "docs" / "knowledge"
-TUNNEL_QUERY = "Почему отвалился туннель"
+TUNNEL_QUERY = "Почему отвалился tunnel 3x-ui"
 DSN = "postgresql://heimdall:heimdall@127.0.0.1:5432/heimdall"
 
 

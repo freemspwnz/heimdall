@@ -14,3 +14,10 @@
 ## Рестарт
 
 Рестарт `postgres` запрещён. Ответ — состояние: статус inspect, ошибки в логах и плохие метрики (`pg_up`). Команду рестарта не писать. Wedding Postgres не использует.
+
+```heimdall-calls
+docker_inspect name=postgres
+loki_query query={container="postgres"} since=30m
+vm_query query=pg_up
+docker_inspect name=postgres-exporter
+```

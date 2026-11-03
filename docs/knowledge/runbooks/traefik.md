@@ -14,3 +14,9 @@
 ## Рестарт
 
 Рестарт `traefik` запрещён. Ответ по прокси — состояние: статус inspect, ошибки в логах прокси и бэкенда. Команду рестарта traefik не писать. Упавший бэкенд, кроме `postgres`, `redis`, `adguardhome` и `3x-ui`, рестартить можно. Живой Vaultwarden из-за 502 не рестартить; если контейнер хранилища не running, `docker restart vaultwarden` после подтверждения.
+
+```heimdall-calls
+docker_inspect name=traefik
+loki_query query={container="traefik"} since=30m
+docker_logs name=traefik tail=100
+```

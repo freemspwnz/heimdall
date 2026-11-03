@@ -1,8 +1,10 @@
 from dataclasses import asdict
+from pathlib import Path
 
 from heimdall.application.models import ToolCall
 from heimdall.domain.models import Observation
 from heimdall.infrastructure.graph.nodes.preflight import preflight
+from heimdall.infrastructure.graph.tools import READ_TOOLS
 from tests.support import RecordingLogger, SilentLogger
 
 
@@ -133,13 +135,9 @@ async def test_bad_line_continues() -> None:
     tools = RecordingTools()
     node = preflight(tools, SilentLogger())
 
-    result = await node(
-        _state(text="```heimdall-calls\nnot-a-call\ndocker_ps\n```")
-    )
+    result = await node(_state(text="```heimdall-calls\nnot-a-call\ndocker_ps\n```"))
 
-    assert result["observations"][0]["error"].startswith(
-        "bad heimdall-calls line:"
-    )
+    assert result["observations"][0]["error"].startswith("bad heimdall-calls line:")
     assert [call.name for call in tools.calls] == ["docker_ps"]
 
 
@@ -187,3 +185,17 @@ async def test_tool_exception_continues() -> None:
     assert result["observations"][1]["ok"] is True
     assert [call.id for call in tools.calls] == ["preflight-1", "preflight-2"]
     assert logger.lines == ["preflight tool failed"]
+
+
+async def test_demo_knowledge_fences_use_read_tools() -> None:
+    runbooks = Path("docs/knowledge/runbooks")
+    allowed_names = {tool.name for tool in READ_TOOLS}
+
+    for filename in ("postgres.md", "traefik.md", "host.md", "redis.md"):
+        tools = RecordingTools()
+        node = preflight(tools, SilentLogger())
+
+        await node(_state(text=(runbooks / filename).read_text()))
+
+        assert tools.calls, filename
+        assert {call.name for call in tools.calls} <= allowed_names

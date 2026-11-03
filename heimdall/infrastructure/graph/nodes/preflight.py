@@ -152,9 +152,7 @@ class preflight:
 
             key_start = index
             while (
-                index < len(text)
-                and not text[index].isspace()
-                and text[index] != "="
+                index < len(text) and not text[index].isspace() and text[index] != "="
             ):
                 index += 1
             key = text[key_start:index]
