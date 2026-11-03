@@ -688,6 +688,96 @@ async def test_graph_loads_named_runbook_without_embeddings(
 
 
 @pytest.mark.asyncio
+async def test_preflight_runs_disk_fence_before_investigate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    body = (
+        "Проверить состояние контейнера.\n"
+        "```heimdall-calls\n"
+        "docker_inspect name=postgres\n"
+        "```\n"
+        "Сопоставить результат с симптомами."
+    )
+    (tmp_path / "demo.md").write_text(body, encoding="utf-8")
+    monkeypatch.setattr(
+        "heimdall.infrastructure.graph.paths.RUNBOOKS_DIR",
+        tmp_path,
+    )
+    docker = FakeDocker()
+    chat = FakeChatModel(
+        [
+            classify_turn("diagnose", "demo.md"),
+            text_turn("Предварительное наблюдение уже в контексте."),
+            diagnose_turn(0.8),
+            propose_turn(None, report="Диагноз по предварительному наблюдению."),
+        ]
+    )
+    graph = await make_graph(
+        chat,
+        docker=docker,
+        loki=FakeLoki(),
+        vm=FakeVictoriaMetrics(),
+    )
+
+    final = await graph.ainvoke(
+        {"question": POSTGRES_QUESTION},
+        config("preflight-before-investigate"),
+    )
+
+    assert docker.inspect_calls == ["postgres"]
+    assert len(final["observations"]) == 1
+    assert final["observations"][0]["tool"] == "docker_inspect"
+    assert len(chat.calls) == 4
+    investigate_messages = chat.calls[1]["messages"]
+    assert isinstance(investigate_messages, list)
+    assert "```heimdall-calls" not in investigate_messages[1].content
+    assert "postgres" in investigate_messages[1].content
+
+
+@pytest.mark.asyncio
+async def test_second_investigate_round_does_not_repeat_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "demo.md").write_text(
+        "```heimdall-calls\ndocker_inspect name=postgres\n```",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "heimdall.infrastructure.graph.paths.RUNBOOKS_DIR",
+        tmp_path,
+    )
+    docker = FakeDocker()
+    chat = FakeChatModel(
+        [
+            classify_turn("diagnose", "demo.md"),
+            *investigate_turns(tool_call("docker_ps")),
+            diagnose_turn(0.1),
+            text_turn("Новых фактов нет."),
+            diagnose_turn(0.1),
+            propose_turn(None, report="Нужна ручная проверка."),
+        ]
+    )
+    graph = await make_graph(
+        chat,
+        docker=docker,
+        loki=FakeLoki(),
+        vm=FakeVictoriaMetrics(),
+    )
+
+    final = await graph.ainvoke(
+        {"question": POSTGRES_QUESTION},
+        config("preflight-one-time"),
+    )
+
+    assert final["investigate_rounds"] == 2
+    assert docker.inspect_calls == ["postgres"]
+    assert docker.ps_calls == 1
+    assert len(final["observations"]) == 2
+
+
+@pytest.mark.asyncio
 async def test_invalid_confidence_falls_back_to_default() -> None:
     chat = FakeChatModel(
         [

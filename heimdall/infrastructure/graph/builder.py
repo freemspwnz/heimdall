@@ -13,6 +13,7 @@ from .nodes import (
     diagnose,
     execute,
     investigate,
+    preflight,
     propose,
     retrieve,
     verify,
@@ -34,6 +35,7 @@ def build_graph(
         "retrieve",
         retrieve(deps.retriever, deps.embedder, deps.logger),
     )
+    graph.add_node("preflight", preflight(tools, deps.logger))
     graph.add_node("investigate", investigate(deps.chat, tools))
     graph.add_node("answer", answer(deps.chat))
     graph.add_node("diagnose", diagnose(deps.chat))
@@ -44,7 +46,8 @@ def build_graph(
 
     graph.add_edge(START, "classify")
     graph.add_edge("classify", "retrieve")
-    graph.add_edge("retrieve", "investigate")
+    graph.add_edge("retrieve", "preflight")
+    graph.add_edge("preflight", "investigate")
     graph.add_conditional_edges(
         "investigate",
         after_investigate,
